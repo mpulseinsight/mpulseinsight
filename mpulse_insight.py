@@ -4,68 +4,81 @@ import psycopg2
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, JsCode
 
 # 1. Page Configuration
-st.set_page_config(page_title="mPulse Material Pro", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="mPulse Insight Pro", layout="wide", initial_sidebar_state="expanded")
 
-# 2. Google Material Design System (High Contrast & Colorful)
+# 2. ULTRA-CONTRAST CSS (Forces everything to Black/Blue)
 st.markdown("""
     <style>
-        /* Base Page - Clean Grey/White */
-        .block-container { padding-top: 1.5rem; background-color: #F8F9FA; }
-        header { visibility: hidden; }
+        /* Force background to White and Text to Black */
+        .main, .block-container { background-color: #FFFFFF !important; color: #202124 !important; }
         
-        /* Sidebar - Explicit Black Text */
-        [data-testid="stSidebar"] { background-color: #FFFFFF; border-right: 1px solid #DADCE0; }
-        [data-testid="stSidebar"] * { color: #202124 !important; }
-        
-        /* The Card Look - White with soft shadows */
+        /* Force Sidebar text to Black */
+        [data-testid="stSidebar"], [data-testid="stSidebar"] * { 
+            background-color: #F8F9FA !important; 
+            color: #202124 !important; 
+        }
+
+        /* Force ALL Markdown, Labels, and Paragraphs to Deep Black */
+        p, span, label, div, h1, h2, h3, h4, h5, h6 { 
+            color: #202124 !important; 
+            font-family: 'Roboto', sans-serif !important; 
+        }
+
+        /* High-Contrast Cards */
         div[data-testid="column"] { 
-            background-color: #FFFFFF; border: 1px solid #DADCE0; 
-            padding: 20px; border-radius: 8px; 
-            box-shadow: 0 1px 2px 0 rgba(60,64,67,.3), 0 1px 3px 1px rgba(60,64,67,.15);
+            background-color: #FFFFFF !important; 
+            border: 1px solid #DADCE0 !important; 
+            padding: 15px; 
+            border-radius: 8px; 
+            box-shadow: 0 1px 3px rgba(60,64,67,0.15);
             margin-bottom: 15px;
         }
 
-        /* Metrics - High Contrast Blue */
-        [data-testid="stMetricLabel"] { color: #5F6368 !important; font-weight: 700 !important; font-size: 13px !important; }
+        /* Force Metrics to Blue/Grey */
+        [data-testid="stMetricLabel"] { color: #5F6368 !important; font-weight: 700 !important; }
         [data-testid="stMetricValue"] { color: #1A73E8 !important; font-weight: 800 !important; }
 
-        /* BUTTON FIX: Google Blue with White Text */
+        /* BUTTON FIX: Google Blue with White Text (Mandatory) */
         div.stButton > button {
             background-color: #1A73E8 !important;
             color: #FFFFFF !important;
             border-radius: 4px !important;
             font-weight: 700 !important;
             border: none !important;
-            width: 100%;
-            transition: all 0.3s ease;
+            text-transform: uppercase;
+            padding: 10px;
         }
-        div.stButton > button:hover { background-color: #1765C1 !important; box-shadow: 0 4px 6px rgba(0,0,0,0.2) !important; }
+        div.stButton > button p { color: #FFFFFF !important; } /* Fix for button text */
 
-        /* Dictionary Table Styling */
-        .dict-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        .dict-table td { border: 1px solid #F1F3F4; padding: 10px 5px; font-size: 13px; color: #202124 !important; }
-        .dict-header { background-color: #F1F3F4; font-weight: 700; color: #5F6368 !important; }
+        /* Progress Bar Labeling Color */
+        .intel-label { 
+            font-weight: 700 !important; 
+            color: #202124 !important; 
+            margin-bottom: 2px;
+            display: block;
+        }
 
-        /* Intelligence Progress Bars Customization */
-        .stProgress > div > div > div > div { background-image: linear-gradient(to right, #D93025, #FBBC04, #1E8E3E); }
+        /* Dictionary Table */
+        .dict-table { width: 100%; border-collapse: collapse; background: white; }
+        .dict-table td { border: 1px solid #DADCE0; padding: 8px; font-size: 13px; color: #202124 !important; }
+        .dict-head { background-color: #F1F3F4; font-weight: 700; }
     </style>
 """, unsafe_allow_html=True)
 
-# 3. Sidebar Dictionary (Structured Table)
+# 3. Sidebar Dictionary
 with st.sidebar:
-    st.image("https://www.gstatic.com/images/branding/product/2x/analytics_64dp.png", width=40)
-    st.title("Data Dictionary")
+    st.markdown("### 📑 Data Dictionary")
     st.markdown("""
     <table class="dict-table">
-        <tr class="dict-header"><td>Metric</td><td>Meaning</td><td>Range</td></tr>
-        <tr><td><b>Conviction</b></td><td>Master Signal Score</td><td>🎯 0 - 1.0</td></tr>
-        <tr><td><b>Safety</b></td><td>Volatility Shield</td><td>🛡️ 0 - 1.0</td></tr>
-        <tr><td><b>Health</b></td><td>Biz Fundamental Quality</td><td>💎 0 - 1.0</td></tr>
-        <tr><td><b>Port. %</b></td><td>Money to Invest</td><td>💰 0 - 100%</td></tr>
-        <tr><td><b>GV Mix</b></td><td>Growth/Value Balance</td><td>⚖️ 0 - 1.0</td></tr>
-        <tr><td><b>Institutional</b></td><td>Smart Money Flow</td><td>🏛️ 0 - 1.0</td></tr>
-        <tr><td><b>Beta</b></td><td>Sensitivity to Market</td><td>📈 0 - 3.0</td></tr>
-        <tr><td><b>Kelly</b></td><td>Mathematical Edge</td><td>🔢 0 - 100%</td></tr>
+        <tr class="dict-head"><td>Field</td><td>Range</td><td>Icon</td></tr>
+        <tr><td>Market Fear</td><td>10 - 80</td><td>📉</td></tr>
+        <tr><td>Regime</td><td>ON / OFF</td><td>🔄</td></tr>
+        <tr><td>Conviction</td><td>0.0 - 1.0</td><td>🎯</td></tr>
+        <tr><td>Safety</td><td>0.0 - 1.0</td><td>🛡️</td></tr>
+        <tr><td>Health</td><td>0.0 - 1.0</td><td>💎</td></tr>
+        <tr><td>Port. Share</td><td>0% - 100%</td><td>💰</td></tr>
+        <tr><td>Smart Money</td><td>0.0 - 1.0</td><td>🏛️</td></tr>
+        <tr><td>Beta</td><td>0.0 - 3.0</td><td>📈</td></tr>
     </table>
     """, unsafe_allow_html=True)
 
@@ -84,99 +97,89 @@ def load_data():
     if not conn: return pd.DataFrame(), pd.DataFrame()
     df = pd.read_sql("SELECT * FROM mpulse_execution_results ORDER BY asatdate ASC", conn)
     df['date_str'] = df['asatdate'].astype(str)
-    
-    # Standard Pivot
     pivot = df.pivot_table(index=['symbol', 'sector'], columns='date_str', values='signal', aggfunc='first').reset_index().fillna('')
-    
-    # 5-Date Slice for UI Matrix
+    # Limit to 5 dates
     cols = [c for c in pivot.columns if c not in ['symbol', 'sector']]
-    recent_dates = sorted(cols, reverse=True)[:5]
-    pivot_display = pivot[['symbol', 'sector'] + sorted(recent_dates)]
-    
-    return df, pivot_display
+    recent = sorted(cols, reverse=True)[:5]
+    return df, pivot[['symbol', 'sector'] + sorted(recent)]
 
 raw_df, pivot_5_df = load_data()
 
-# 5. History Audit Dialog
-@st.dialog("Signal Transition Audit", width="large")
+# 5. History Audit (Popup)
+@st.dialog("Detailed Signal History", width="large")
 def show_audit(symbol):
-    st.subheader(f"Historical Audit: {symbol}")
+    st.markdown(f"### Audit Trail: {symbol}")
     data = raw_df[raw_df['symbol'] == symbol].sort_values('asatdate', ascending=True)
     data['changed'] = data['signal'] != data['signal'].shift(1)
     changes = data[data['changed'] == True].sort_values('asatdate', ascending=False)
-    st.dataframe(changes[['asatdate', 'signal', 'action', 'notes']], use_container_width=True)
+    st.table(changes[['asatdate', 'signal', 'action', 'notes']])
 
-# 6. Global Header
-h1, h2, h3, h4 = st.columns(4)
-with h1: search = st.text_input("🔍 Search Ticker", "").upper()
-with h2: sector = st.selectbox("📁 Sector", ["All"] + sorted(pivot_5_df['sector'].unique().tolist()))
-with h3: st.metric("Market Fear (VIX)", f"{raw_df['vix'].iloc[-1]:.2f}" if not raw_df.empty else "0.00")
-with h4: st.metric("Market Regime", f"{raw_df['final_regime'].iloc[-1]}" if not raw_df.empty else "N/A")
+# 6. Navigation
+m1, m2, m3, m4 = st.columns(4)
+with m1: search = st.text_input("🔍 Search", "").upper()
+with m2: sector = st.selectbox("📁 Sector", ["All"] + sorted(pivot_5_df['sector'].unique().tolist()))
+with m3: st.metric("Market Fear (VIX)", f"{raw_df['vix'].iloc[-1]:.2f}" if not raw_df.empty else "0.00")
+with m4: st.metric("Market Regime", f"{raw_df['final_regime'].iloc[-1]}" if not raw_df.empty else "N/A")
 
-# 7. Main Grid Layout
-col_mat, col_intel = st.columns([1.6, 1.4])
+# 7. Main Grid
+col_grid, col_intel = st.columns([1.6, 1.4])
 
 filtered = pivot_5_df.copy()
 if search: filtered = filtered[filtered['symbol'].str.contains(search)]
 if sector != "All": filtered = filtered[filtered['sector'] == sector]
 
-with col_mat:
+with col_grid:
     st.markdown("### 🗓️ Signal Matrix (Recent)")
     gb = GridOptionsBuilder.from_dataframe(filtered)
-    gb.configure_column("symbol", pinned="left", width=100)
+    gb.configure_column("symbol", pinned="left", width=90)
     
-    # Colorful Heatmap (Google Palette)
-    cell_style = JsCode("""
+    js_style = JsCode("""
     function(params) {
         if (!params.value) return {};
         const v = params.value.toUpperCase();
-        if (v.includes('BULLISH')) return {backgroundColor: '#E6F4EA', color: '#137333', fontWeight: '800', border: '1px solid #CEEAD6'};
-        if (v.includes('BEARISH')) return {backgroundColor: '#FCE8E6', color: '#C5221F', fontWeight: '800', border: '1px solid #FAD2CF'};
-        return {backgroundColor: '#F8F9FA', color: '#3C4043', border: '1px solid #DADCE0'};
+        if (v.includes('BULLISH')) return {backgroundColor: '#E6F4EA', color: '#137333', fontWeight: 'bold'};
+        if (v.includes('BEARISH')) return {backgroundColor: '#FCE8E6', color: '#C5221F', fontWeight: 'bold'};
+        return {backgroundColor: '#F8F9FA', color: '#3C4043'};
     }
     """)
     for c in [x for x in filtered.columns if x not in ['symbol', 'sector']]:
-        gb.configure_column(c, cellStyle=cell_style, width=110)
+        gb.configure_column(c, cellStyle=js_style, width=105)
     
     gb.configure_selection(selection_mode="single")
-    grid_response = AgGrid(filtered, gridOptions=gb.build(), update_mode=GridUpdateMode.SELECTION_CHANGED, allow_unsafe_jscode=True, theme="alpine", height=650)
+    grid_out = AgGrid(filtered, gridOptions=gb.build(), update_mode=GridUpdateMode.SELECTION_CHANGED, allow_unsafe_jscode=True, theme="alpine", height=600)
 
 with col_intel:
-    sel = grid_response.get('selected_rows')
+    sel = grid_out.get('selected_rows')
     if sel is not None and len(sel) > 0:
         row_data = sel.iloc[0] if isinstance(sel, pd.DataFrame) else sel[0]
         ticker = row_data['symbol']
         
-        # Header with Colorful Button
-        c_name, c_btn = st.columns([1.5, 1])
-        with c_name: st.markdown(f"## {ticker} Intel")
+        # Action Bar
+        c_head, c_btn = st.columns([1.5, 1])
+        with c_head: st.markdown(f"## {ticker} Analysis")
         with c_btn: 
-            if st.button("📊 VIEW FULL HISTORY"):
-                show_audit(ticker)
+            if st.button("📊 AUDIT HISTORY"): show_audit(ticker)
         
         hist = raw_df[raw_df['symbol'] == ticker].sort_values('asatdate', ascending=False)
-        date = st.selectbox("Historical Date", options=hist['date_str'].tolist()[:10])
+        date = st.selectbox("Select Date", options=hist['date_str'].tolist()[:10])
         d = hist[hist['date_str'] == date].iloc[0]
 
-        # Intelligence Grid with Progress Bars (The "Colorful/Meaningful" Part)
-        def intel_block(label, val, max_val=1.0):
-            st.write(f"**{label}**: `{val:.4f}`")
-            # Normalize for progress bar
-            st.progress(min(max(val / max_val, 0.0), 1.0))
+        # Intelligence Grid (Forcing Black Text Labels)
+        def intel_row(label, val):
+            st.markdown(f'<span class="intel-label">{label}: {val:.4f}</span>', unsafe_allow_html=True)
+            st.progress(min(max(val, 0.0), 1.0))
 
         st.markdown("#### 🎯 Conviction Metrics")
-        intel_block("Conviction (Hybrid)", d['s_hybrid'])
-        intel_block("Safety Buffer", (1 - d['risk_score']))
-        intel_block("Financial Strength", d['f_score'])
+        intel_row("Master Conviction", d['s_hybrid'])
+        intel_row("Safety Buffer", (1 - d['risk_score']))
+        intel_row("Business Health", d['f_score'])
         
-        st.markdown("#### 🏛️ Market & Sentiment")
-        intel_block("Professional Buying", d['smart_money_score'])
-        intel_block("Wall St. Consensus", d['analyst_score'])
-        intel_block("Product Pipeline", d['pipeline_score'])
+        st.markdown("#### 🏛️ Sentiment & Flow")
+        intel_row("Smart Money Flow", d['smart_money_score'])
+        intel_row("Analyst Sentiment", d['analyst_score'])
+        intel_row("Product Pipeline", d['pipeline_score'])
 
-        st.markdown("#### 💰 Execution Strategy")
-        st.info(f"Recommended Weight: **{d['final_weight']:.2%}** | Cash Needed: **${d['final_dollars']:,}**")
-        st.caption(f"Kelly Edge: {d['kelly_fraction']:.2%} | Beta: {d['beta']:.2f}")
-
+        st.markdown("#### 💰 Strategy")
+        st.success(f"Port Weight: **{d['final_weight']:.2%}\n** | Cash: **${d['final_dollars']:,}**")
     else:
-        st.warning("Please click a Ticker in the Matrix to load the Intelligence Grid.")
+        st.warning("Please click a ticker in the matrix to load Intelligence Grid.")
