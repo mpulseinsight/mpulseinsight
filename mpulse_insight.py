@@ -24,16 +24,24 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # 2. Database Connection (Hardcoded)
+# --- Updated Database Connection (leveraging Environment Variables) ---
 @st.cache_resource
 def get_db_connection():
     try:
+        # Streamlit automatically maps 'st.secrets' to environment variables
+        creds = st.secrets["postgres"]
+        
         return psycopg2.connect(
-            host="mpulseinsight.cw94024som2q.us-east-1.rds.amazonaws.com",
-            port=5432, database="postgres", user="postgres", password="mpulseinsight",
+            host=creds["host"],
+            port=creds["port"],
+            database=creds["database"],
+            user=creds["user"],
+            password=creds["password"],
             sslmode="require"
         )
     except Exception as e:
-        st.error(f"Connection Error: {e}")
+        st.error("❌ Database credentials not found or connection failed.")
+        st.info("Check Streamlit Cloud Secrets or local .streamlit/secrets.toml")
         return None
 
 @st.cache_data(ttl=60)
