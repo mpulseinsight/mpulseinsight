@@ -3,39 +3,36 @@ import pandas as pd
 import psycopg2
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, JsCode
 
-# 1. Page Configuration
+# 1. Page Configuration - Extreme High Density
 st.set_page_config(page_title="mPulse Insight", layout="wide", initial_sidebar_state="collapsed")
 
-# 2. THE TOTAL LOCKDOWN & MOBILE FIX (CSS)
+# 2. Ultra-Modern Professional CSS
 st.markdown("""
     <style>
-        /* 1. Remove Streamlit Branding & Manage Buttons */
-        header { visibility: hidden !important; }
-        footer { visibility: hidden !important; }
-        #MainMenu { visibility: hidden !important; }
-        .stAppDeployButton { display: none !important; }
-        [data-testid="stToolbar"] { display: none !important; }
-        [data-testid="stDecoration"] { display: none !important; }
-        div.viewerBadge_container__1QSob { display: none !important; }
-
-        /* 2. Responsive iPhone Fixes */
-        .block-container { padding: 0.5rem 1rem !important; max-width: 100%; }
+        /* Main Container Optimization */
+        .block-container { padding-top: 1rem; padding-bottom: 1rem; max-width: 98%; }
+        header { visibility: hidden; }
         
-        /* Mobile Column Stacking Logic */
-        @media (max-width: 768px) {
-            div[data-testid="column"] {
-                width: 100% !important;
-                flex: 1 1 100% !important;
-                margin-bottom: 15px;
-            }
-        }
-
-        /* 3. Professional Card Look */
+        /* Dark Theme Styling */
         div[data-testid="column"] { 
-            background-color: #ffffff; border: 1px solid #e0e0e0; 
-            padding: 15px; border-radius: 12px; 
-            box-shadow: 0 4px 6px rgba(0,0,0,0.02);
+            background-color: #0d1117; 
+            border: 1px solid #30363d; 
+            padding: 15px; 
+            border-radius: 8px; 
+            margin-bottom: 10px;
         }
+        
+        /* Metric Styling */
+        .stMetric { background-color: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 10px !important; }
+        
+        /* Scannability for Mobile */
+        @media (max-width: 768px) {
+            div[data-testid="column"] { padding: 8px; margin-bottom: 5px; }
+            .stMetric { padding: 5px !important; }
+        }
+        
+        /* Custom Progress Bar Color */
+        .stProgress > div > div > div > div { background-color: #58a6ff; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -49,7 +46,7 @@ def get_db_connection():
             user=creds["user"], password=creds["password"], sslmode="require"
         )
     except Exception as e:
-        st.error("Database Connection Error.")
+        st.error("❌ Database connection failed.")
         return None
 
 @st.cache_data(ttl=60)
@@ -64,96 +61,116 @@ def load_full_data():
 
 raw_df, pivot_df = load_full_data()
 
-# --- 4. TOP BAR FILTERS ---
-t1, t2 = st.columns([1, 1])
-with t1:
-    search_symbol = st.text_input("🔍 Find Ticker", placeholder="Search...").upper()
-with t2:
-    all_sectors = ["All Categories"] + sorted(pivot_df['sector'].unique().tolist())
-    selected_sector = st.selectbox("📁 Category", options=all_sectors)
+# --- 4. TOP SUMMARY BAR (Information at a Glance) ---
+m1, m2, m3, m4 = st.columns(4)
+with m1:
+    vix_val = raw_df['vix'].iloc[-1] if not raw_df.empty else 0
+    st.metric("Market Fear (VIX)", f"{vix_val:.2f}", delta="Risk-On" if vix_val < 22 else "Risk-Off", delta_color="inverse")
+with m2:
+    active_signals = raw_df[raw_df['asatdate'] == raw_df['asatdate'].max()]
+    bullish_count = len(active_signals[active_signals['signal'].str.contains("BULLISH", na=False)])
+    st.metric("Bullish Opportunities", bullish_count)
+with m3:
+    search_query = st.text_input("", placeholder="🔍 Search Ticker...").upper()
+with m4:
+    sector_list = ["All Sectors"] + sorted(pivot_df['sector'].unique().tolist())
+    sel_sector = st.selectbox("", options=sector_list, label_visibility="collapsed")
 
+# --- 5. MAIN UI LAYOUT ---
+col_timeline, col_detail = st.columns([1.8, 1.2])
+
+# Filter Logic
 filtered_pivot = pivot_df.copy()
-if search_symbol:
-    filtered_pivot = filtered_pivot[filtered_pivot['symbol'].str.contains(search_symbol)]
-if selected_sector != "All Categories":
-    filtered_pivot = filtered_pivot[filtered_pivot['sector'] == selected_sector]
+if search_query:
+    filtered_pivot = filtered_pivot[filtered_pivot['symbol'].str.contains(search_query)]
+if sel_sector != "All Sectors":
+    filtered_pivot = filtered_pivot[filtered_pivot['sector'] == sel_sector]
 
-# --- 5. MAIN INTERFACE ---
-col_grid, col_info = st.columns([1.8, 1.2])
-
-with col_grid:
+with col_timeline:
     gb = GridOptionsBuilder.from_dataframe(filtered_pivot)
     gb.configure_column("symbol", pinned="left", headerName="Ticker", width=90)
-    gb.configure_column("sector", pinned="left", headerName="Category", width=120)
+    gb.configure_column("sector", pinned="left", headerName="Sector", width=130)
     
-    # Lighter Professional Heatmap
+    # Heatmap Logic
     signal_style = JsCode("""
     function(params) {
         if (!params.value) return {};
         const val = params.value.toUpperCase();
-        if (val.includes('BULLISH')) return {backgroundColor: '#f0fdf4', color: '#166534', borderRight: '1px solid #f1f5f9'};
-        if (val.includes('BEARISH')) return {backgroundColor: '#fef2f2', color: '#991b1b', borderRight: '1px solid #f1f5f9'};
-        return {backgroundColor: '#f8f9fa', color: '#475569', borderRight: '1px solid #f1f5f9'};
+        if (val.includes('BULLISH')) return {backgroundColor: '#064e3b', color: '#ecfdf5', fontWeight: 'bold'};
+        if (val.includes('BEARISH')) return {backgroundColor: '#7f1d1d', color: '#fef2f2', fontWeight: 'bold'};
+        if (val.includes('NEUTRAL')) return {backgroundColor: '#1e293b', color: '#f1f5f9'};
+        return {};
     }
     """)
-
-    date_cols = [col for col in filtered_pivot.columns if col not in ['sector', 'symbol']]
+    
+    date_cols = [c for c in filtered_pivot.columns if c not in ['symbol', 'sector']]
     for c in date_cols:
         gb.configure_column(c, cellStyle=signal_style, width=105)
 
-    gb.configure_selection(selection_mode="single", use_checkbox=False)
-    gb.configure_grid_options(headerHeight=40, rowHeight=35)
+    gb.configure_selection(selection_mode="single")
+    gb.configure_grid_options(headerHeight=35, rowHeight=32)
     
-    grid_response = AgGrid(filtered_pivot, gridOptions=gb.build(), update_mode=GridUpdateMode.SELECTION_CHANGED, allow_unsafe_jscode=True, theme="alpine", height=500)
+    grid_response = AgGrid(filtered_pivot, gridOptions=gb.build(), update_mode=GridUpdateMode.SELECTION_CHANGED, allow_unsafe_jscode=True, theme="alpine", height=700)
 
-with col_info:
-    selected = grid_response.get('selected_rows')
-    if selected is not None and len(selected) > 0:
-        row = selected.iloc[0] if isinstance(selected, pd.DataFrame) else selected[0]
-        ticker = row['symbol']
+with col_detail:
+    # Logic to capture selection
+    selected_rows = grid_response.get('selected_rows')
+    has_selection = False
+    if selected_rows is not None:
+        if isinstance(selected_rows, pd.DataFrame) and not selected_rows.empty:
+            has_selection, sel_row = True, selected_rows.iloc[0]
+        elif isinstance(selected_rows, list) and len(selected_rows) > 0:
+            has_selection, sel_row = True, selected_rows[0]
+
+    if has_selection:
+        ticker = sel_row['symbol']
         hist = raw_df[raw_df['symbol'] == ticker].sort_values('asatdate', ascending=False)
         
-        st.markdown(f"### 📈 {ticker} Plan")
-        sel_date = st.selectbox("Select Date", options=hist['date_str'].tolist(), label_visibility="collapsed")
-        data = hist[hist['date_str'] == sel_date].iloc[0]
+        # Sub-header with ticker details
+        st.markdown(f"## {ticker} <small style='color:gray'>{sel_row['sector']}</small>", unsafe_allow_html=True)
+        date_pick = st.selectbox("Historical View", options=hist['date_str'].tolist(), label_visibility="collapsed")
+        data = hist[hist['date_str'] == date_pick].iloc[0]
 
-        # METRICS WITH HUMAN LABELS & DESCRIPTIONS
-        st.metric("Strength Score", f"{data['s_hybrid']:.2f}", help="Calculated market health. Above 0.60 is Bullish.")
-        
-        m1, m2 = st.columns(2)
-        m1.metric("Safety Buffer", f"{data['kelly_fraction']:.1%}", help="How much protection you have against market swings.")
-        m2.metric("Portfolio Share", f"{data['final_weight']:.1%}", help="Recommended percentage of your total funds.")
-        
-        st.metric("Cash to Use", f"${data['final_dollars']:,}", help="The actual dollar amount suggested for this trade.")
+        # --- ACTION CARD ---
+        action_colors = {"ENTER": "#064e3b", "ACCUMULATE": "#1e3a8a", "EXIT": "#7f1d1d", "WAIT": "#44403c"}
+        bg = action_colors.get(data['action'], "#161b22")
+        st.markdown(f"""
+            <div style="background-color:{bg}; padding:15px; border-radius:10px; text-align:center; border: 1px solid #30363d">
+                <h2 style="margin:0; color:white;">{data['action']}</h2>
+                <p style="margin:0; opacity:0.9; font-size:14px;">{data['notes']}</p>
+            </div>
+        """, unsafe_allow_html=True)
 
-        # Threshold Guideline Table
-        st.markdown("---")
-        with st.expander("📖 Investment Guide & Thresholds", expanded=False):
-            st.write("""
-            | Metric | Good Range | Meaning |
-            | :--- | :--- | :--- |
-            | **Strength** | 0.60 - 1.0 | Strong pulse, high confidence. |
-            | **Safety** | 10% - 25% | Healthy room for error. |
-            | **Company** | 7.0+ | Business is making money. |
-            | **Sentiment** | Positive | Big players are buying. |
-            | **Market Risk** | Low/Med | Environment is safe for entry. |
-            """)
+        st.write("### 💎 Logic Breakdown")
+        
+        # Core 4 Fields (Common Man Mappings)
+        c1, c2 = st.columns(2)
+        c1.metric("Strength Score", f"{data['s_hybrid']:.2f}", help="Conviction level (0-1)")
+        c2.metric("Safety Buffer", f"{(1 - data['risk_score']):.2f}", help="Higher is safer (Inverted Risk)")
+        
+        c3, c4 = st.columns(2)
+        c3.metric("Portfolio Share", f"{data['final_weight']:.1%}")
+        c4.metric("Cash to Use", f"${data['final_dollars']:,}")
+
+        # Visual Score Drivers
+        with st.expander("🔍 Diagnostic Scores", expanded=True):
+            # Fundamental Health
+            st.write(f"**Business Health (F-Score):** {data['f_score']:.2f}")
+            st.progress(data['f_score'])
+            
+            # Smart Money
+            st.write(f"**Smart Money Flow:** {data['smart_money_score']:.2f}")
+            st.progress(data['smart_money_score'])
+            
+            # Analysts
+            st.write(f"**Analyst Sentiment:** {data['analyst_score']:.2f}")
+            st.progress(data['analyst_score'])
+
+        # Context Info
+        with st.expander("🌍 Market Context"):
+            st.write(f"**Regime:** {data['final_regime']}")
+            st.write(f"**Volatility:** {data['vix']} (VIX)")
+            st.write(f"**Trend Mode:** {data['trend_regime']}")
+            st.caption(f"Kelly Fraction: {data['kelly_fraction']:.2%}")
     else:
-        st.info("👋 Select a ticker from the left to view the investment plan.")
-
-# --- 6. GLOBAL GLOSSARY (Informative Section) ---
-st.divider()
-st.subheader("How to read the mPulse Terminal")
-g1, g2, g3 = st.columns(3)
-
-with g1:
-    st.markdown("**Strength Score**")
-    st.caption("A combined measure of price speed and volume. Higher numbers mean the stock is in a confirmed 'Up' cycle.")
-
-with g2:
-    st.markdown("**Safety Buffer**")
-    st.caption("Think of this as your seatbelt. It tells you how much capital is safe to risk based on current volatility.")
-
-with g3:
-    st.markdown("**Market Sentiment**")
-    st.caption("Tracks whether Institutional 'Smart Money' is quietly accumulating or selling their shares.")
+        st.info("👈 Select a ticker to view its intelligence profile.")
