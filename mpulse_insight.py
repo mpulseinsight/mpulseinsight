@@ -3,40 +3,65 @@ import pandas as pd
 import psycopg2
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, JsCode
 
-# 1. Page Configuration - Extreme High Density
-st.set_page_config(page_title="mPulse Insight", layout="wide", initial_sidebar_state="collapsed")
+# 1. Page Configuration - Enterprise Pro
+st.set_page_config(page_title="mPulse Pro Insight", layout="wide", initial_sidebar_state="expanded")
 
-# 2. Ultra-Modern Professional CSS
+# 2. Enterprise Light Theme CSS
 st.markdown("""
     <style>
-        /* Main Container Optimization */
         .block-container { padding-top: 1rem; padding-bottom: 1rem; max-width: 98%; }
         header { visibility: hidden; }
         
-        /* Dark Theme Styling */
+        /* Light Theme Architecture */
         div[data-testid="column"] { 
-            background-color: #0d1117; 
-            border: 1px solid #30363d; 
+            background-color: #ffffff; 
+            border: 1px solid #e2e8f0; 
             padding: 15px; 
             border-radius: 8px; 
+            box-shadow: 0 1px 2px rgba(0,0,0,0.03);
             margin-bottom: 10px;
         }
         
-        /* Metric Styling */
-        .stMetric { background-color: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 10px !important; }
-        
-        /* Scannability for Mobile */
-        @media (max-width: 768px) {
-            div[data-testid="column"] { padding: 8px; margin-bottom: 5px; }
-            .stMetric { padding: 5px !important; }
+        /* Enterprise Metrics */
+        .stMetric { 
+            background-color: #f8fafc; 
+            border: 1px solid #cbd5e1; 
+            border-radius: 4px; 
+            padding: 12px !important; 
         }
         
-        /* Custom Progress Bar Color */
-        .stProgress > div > div > div > div { background-color: #58a6ff; }
+        /* Typography */
+        html, body, [class*="ViewContainer"] { font-family: 'Inter', system-ui, sans-serif; color: #1e293b; }
+        h1, h2, h3 { color: #0f172a; font-weight: 700; }
+        
+        /* Corporate Blue Progress Bars */
+        .stProgress > div > div > div > div { background-color: #3b82f6; }
     </style>
 """, unsafe_allow_html=True)
 
-# 3. Database Connection
+# 3. Intelligence Legend (Sidebar)
+with st.sidebar:
+    st.title("📖 Trade Logic")
+    with st.expander("Indicator Ranges", expanded=True):
+        st.markdown("""
+        **0.60 - 1.00:** Strong 🟢
+        **0.40 - 0.59:** Neutral 🟡
+        **0.00 - 0.39:** Weak 🔴
+        """)
+        st.caption("**Strength Score:** Conviction level.")
+        st.caption("**Safety Buffer:** Protection from volatility.")
+        st.caption("**Health:** Fundamental business quality.")
+        st.caption("**Smart Money:** Institutional flow.")
+    
+    with st.expander("Market Climate", expanded=True):
+        st.markdown("""
+        * **RISK_ON:** High allocation mode.
+        * **RISK_OFF:** Defensive/Cash mode.
+        * **VIX < 20:** Stability.
+        * **VIX > 30:** High Risk/Panic.
+        """)
+
+# 4. Database Connection & Data Load
 @st.cache_resource
 def get_db_connection():
     try:
@@ -46,7 +71,7 @@ def get_db_connection():
             user=creds["user"], password=creds["password"], sslmode="require"
         )
     except Exception as e:
-        st.error("❌ Database connection failed.")
+        st.error("❌ DB Connection Failed. Check Secrets.")
         return None
 
 @st.cache_data(ttl=60)
@@ -56,49 +81,50 @@ def load_full_data():
     query = "SELECT * FROM mpulse_execution_results WHERE asatdate >= CURRENT_DATE - INTERVAL '30 days' ORDER BY asatdate ASC"
     df = pd.read_sql(query, conn)
     df['date_str'] = df['asatdate'].astype(str)
+    # Pivot Table for Timeline
     pivot = df.pivot_table(index=['symbol', 'sector'], columns='date_str', values='signal', aggfunc='first').reset_index().fillna('')
     return df, pivot
 
 raw_df, pivot_df = load_full_data()
 
-# --- 4. TOP SUMMARY BAR (Information at a Glance) ---
-m1, m2, m3, m4 = st.columns(4)
-with m1:
-    vix_val = raw_df['vix'].iloc[-1] if not raw_df.empty else 0
-    st.metric("Market Fear (VIX)", f"{vix_val:.2f}", delta="Risk-On" if vix_val < 22 else "Risk-Off", delta_color="inverse")
-with m2:
-    active_signals = raw_df[raw_df['asatdate'] == raw_df['asatdate'].max()]
-    bullish_count = len(active_signals[active_signals['signal'].str.contains("BULLISH", na=False)])
-    st.metric("Bullish Opportunities", bullish_count)
-with m3:
+# 5. Dashboard Top Filter Bar
+t1, t2, t3, t4 = st.columns([1, 1, 1, 1])
+with t1:
     search_query = st.text_input("", placeholder="🔍 Search Ticker...").upper()
-with m4:
-    sector_list = ["All Sectors"] + sorted(pivot_df['sector'].unique().tolist())
-    sel_sector = st.selectbox("", options=sector_list, label_visibility="collapsed")
+with t2:
+    all_sectors = ["All Sectors"] + sorted(pivot_df['sector'].unique().tolist())
+    sel_sector = st.selectbox("", options=all_sectors, label_visibility="collapsed")
+with t3:
+    vix_val = raw_df['vix'].iloc[-1] if not raw_df.empty else 0
+    st.metric("VIX Index", f"{vix_val:.2f}", delta="Calm" if vix_val < 22 else "Volatile", delta_color="inverse")
+with t4:
+    regime_val = raw_df['final_regime'].iloc[-1] if not raw_df.empty else "N/A"
+    st.metric("Market Regime", regime_val)
 
-# --- 5. MAIN UI LAYOUT ---
-col_timeline, col_detail = st.columns([1.8, 1.2])
+# 6. Main UI Layout
+col_main, col_intel = st.columns([1.7, 1.3])
 
-# Filter Logic
+# Filtering Pivot
 filtered_pivot = pivot_df.copy()
 if search_query:
     filtered_pivot = filtered_pivot[filtered_pivot['symbol'].str.contains(search_query)]
 if sel_sector != "All Sectors":
     filtered_pivot = filtered_pivot[filtered_pivot['sector'] == sel_sector]
 
-with col_timeline:
+with col_main:
+    st.subheader("Signal Matrix")
     gb = GridOptionsBuilder.from_dataframe(filtered_pivot)
     gb.configure_column("symbol", pinned="left", headerName="Ticker", width=90)
     gb.configure_column("sector", pinned="left", headerName="Sector", width=130)
     
-    # Heatmap Logic
+    # Senior Trader Palette: Subtle Greens/Reds
     signal_style = JsCode("""
     function(params) {
         if (!params.value) return {};
         const val = params.value.toUpperCase();
-        if (val.includes('BULLISH')) return {backgroundColor: '#064e3b', color: '#ecfdf5', fontWeight: 'bold'};
-        if (val.includes('BEARISH')) return {backgroundColor: '#7f1d1d', color: '#fef2f2', fontWeight: 'bold'};
-        if (val.includes('NEUTRAL')) return {backgroundColor: '#1e293b', color: '#f1f5f9'};
+        if (val.includes('BULLISH')) return {backgroundColor: '#f0fdf4', color: '#166534', fontWeight: 'bold'};
+        if (val.includes('BEARISH')) return {backgroundColor: '#fef2f2', color: '#991b1b', fontWeight: 'bold'};
+        if (val.includes('NEUTRAL')) return {backgroundColor: '#f8fafc', color: '#64748b'};
         return {};
     }
     """)
@@ -110,10 +136,10 @@ with col_timeline:
     gb.configure_selection(selection_mode="single")
     gb.configure_grid_options(headerHeight=35, rowHeight=32)
     
-    grid_response = AgGrid(filtered_pivot, gridOptions=gb.build(), update_mode=GridUpdateMode.SELECTION_CHANGED, allow_unsafe_jscode=True, theme="alpine", height=700)
+    grid_response = AgGrid(filtered_pivot, gridOptions=gb.build(), update_mode=GridUpdateMode.SELECTION_CHANGED, allow_unsafe_jscode=True, theme="alpine", height=750)
 
-with col_detail:
-    # Logic to capture selection
+with col_intel:
+    # Selection Handling
     selected_rows = grid_response.get('selected_rows')
     has_selection = False
     if selected_rows is not None:
@@ -124,53 +150,60 @@ with col_detail:
 
     if has_selection:
         ticker = sel_row['symbol']
-        hist = raw_df[raw_df['symbol'] == ticker].sort_values('asatdate', ascending=False)
+        ticker_hist = raw_df[raw_df['symbol'] == ticker].sort_values('asatdate', ascending=False)
         
-        # Sub-header with ticker details
-        st.markdown(f"## {ticker} <small style='color:gray'>{sel_row['sector']}</small>", unsafe_allow_html=True)
-        date_pick = st.selectbox("Historical View", options=hist['date_str'].tolist(), label_visibility="collapsed")
-        data = hist[hist['date_str'] == date_pick].iloc[0]
+        # Detail Header
+        st.markdown(f"## {ticker} <small style='color:#64748b;'>| {sel_row['sector']}</small>", unsafe_allow_html=True)
+        date_sel = st.selectbox("Date Log", options=ticker_hist['date_str'].tolist(), label_visibility="collapsed")
+        data = ticker_hist[ticker_hist['date_str'] == date_sel].iloc[0]
 
-        # --- ACTION CARD ---
-        action_colors = {"ENTER": "#064e3b", "ACCUMULATE": "#1e3a8a", "EXIT": "#7f1d1d", "WAIT": "#44403c"}
-        bg = action_colors.get(data['action'], "#161b22")
+        # Action Badge (Enterprise Styling)
+        act_colors = {"ENTER": "#16a34a", "ACCUMULATE": "#2563eb", "EXIT": "#dc2626", "WAIT": "#475569"}
+        act_bg = act_colors.get(data['action'], "#f1f5f9")
         st.markdown(f"""
-            <div style="background-color:{bg}; padding:15px; border-radius:10px; text-align:center; border: 1px solid #30363d">
-                <h2 style="margin:0; color:white;">{data['action']}</h2>
-                <p style="margin:0; opacity:0.9; font-size:14px;">{data['notes']}</p>
+            <div style="background-color:{act_bg}; padding:12px; border-radius:6px; text-align:center; color:white;">
+                <h3 style="margin:0; color:white;">{data['action']}</h3>
+                <p style="margin:0; font-size:13px; opacity:0.9;">{data['notes']}</p>
             </div>
         """, unsafe_allow_html=True)
 
-        st.write("### 💎 Logic Breakdown")
-        
-        # Core 4 Fields (Common Man Mappings)
-        c1, c2 = st.columns(2)
-        c1.metric("Strength Score", f"{data['s_hybrid']:.2f}", help="Conviction level (0-1)")
-        c2.metric("Safety Buffer", f"{(1 - data['risk_score']):.2f}", help="Higher is safer (Inverted Risk)")
-        
-        c3, c4 = st.columns(2)
-        c3.metric("Portfolio Share", f"{data['final_weight']:.1%}")
-        c4.metric("Cash to Use", f"${data['final_dollars']:,}")
+        st.divider()
 
-        # Visual Score Drivers
-        with st.expander("🔍 Diagnostic Scores", expanded=True):
-            # Fundamental Health
-            st.write(f"**Business Health (F-Score):** {data['f_score']:.2f}")
-            st.progress(data['f_score'])
-            
-            # Smart Money
-            st.write(f"**Smart Money Flow:** {data['smart_money_score']:.2f}")
-            st.progress(data['smart_money_score'])
-            
-            # Analysts
-            st.write(f"**Analyst Sentiment:** {data['analyst_score']:.2f}")
-            st.progress(data['analyst_score'])
+        # --- THE INTELLIGENCE RIBBON (Slider Equivalent for Senior Traders) ---
+        st.write("### 💎 Key Intelligence")
+        
+        # Primary Metrics
+        m_row1_1, m_row1_2 = st.columns(2)
+        m_row1_1.metric("Strength Score", f"{data['s_hybrid']:.2f}", help="Master convicton (0.0 to 1.0)")
+        m_row1_2.metric("Safety Buffer", f"{(1 - data['risk_score']):.2f}", help="Stability vs. Volatility")
+        
+        m_row2_1, m_row2_2 = st.columns(2)
+        m_row2_1.metric("Portfolio Weight", f"{data['final_weight']:.1%}", help="Recommended allocation size")
+        m_row2_2.metric("Target Cash", f"${data['final_dollars']:,}", help="Cash value of position")
 
-        # Context Info
-        with st.expander("🌍 Market Context"):
-            st.write(f"**Regime:** {data['final_regime']}")
-            st.write(f"**Volatility:** {data['vix']} (VIX)")
-            st.write(f"**Trend Mode:** {data['trend_regime']}")
-            st.caption(f"Kelly Fraction: {data['kelly_fraction']:.2%}")
+        # Full Data Intelligence Slide-down
+        with st.expander("🔍 Comprehensive Field Analysis", expanded=True):
+            st.write("**Company & Fundamental Metrics**")
+            st.progress(data['f_score'], text=f"Business Health (F-Score): {data['f_score']:.2f}")
+            st.progress(data['analyst_score'], text=f"Analyst Sentiment: {data['analyst_score']:.2f}")
+            st.progress(data['gv_score'], text=f"Growth/Value Score: {data['gv_score']:.2f}")
+            
+            st.divider()
+            
+            st.write("**Sentiment & Momentum**")
+            st.progress(data['smart_money_score'], text=f"Institutional Flow: {data['smart_money_score']:.2f}")
+            st.progress(data['pipeline_score'], text=f"Pipeline Score: {data['pipeline_score']:.2f}")
+            
+            st.divider()
+            
+            st.write("**Market Risk Exposure**")
+            st.caption(f"Stock Beta: {data['beta']:.2f} | Vol Scale: {data['vol_scale']:.2f}")
+            st.caption(f"Kelly Fraction: {data['kelly_fraction']:.2%} | Sector Penalty: {data['sector_penalty']:.2f}")
+
+        with st.expander("🌏 Market Climate Analysis"):
+            st.write(f"Regime: **{data['final_regime']}**")
+            st.write(f"VIX: {data['vix']} | Trend: {data['trend_regime']}")
+            st.write(f"Sector Weight: {data['sector_weight']:.2%}")
+
     else:
-        st.info("👈 Select a ticker to view its intelligence profile.")
+        st.info("Select a ticker from the matrix to load intelligence data.")
