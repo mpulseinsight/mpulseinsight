@@ -6,59 +6,92 @@ from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, JsCode
 # 1. Page Configuration
 st.set_page_config(page_title="mPulse Insight", layout="wide", initial_sidebar_state="expanded")
 
-# 2. Google-Standard Classic CSS (High Contrast)
+# 2. Google Classic High-Contrast CSS
 st.markdown("""
     <style>
-        /* Main page settings */
-        .block-container { padding-top: 1.5rem; background-color: #F8F9FA; color: #202124; }
+        /* Overall Page Contrast */
+        .block-container { padding-top: 1.5rem; background-color: #FFFFFF; color: #202124; }
         header { visibility: hidden; }
         
-        /* High Contrast Card Styling */
+        /* Sidebar Contrast */
+        [data-testid="stSidebar"] { background-color: #F8F9FA; border-right: 1px solid #DADCE0; }
+        
+        /* High-Contrast Content Containers */
         div[data-testid="column"] { 
             background-color: #FFFFFF; 
-            border: 1px solid #DADCE0; 
+            border: 1px solid #BDC1C6; 
             padding: 20px; 
-            border-radius: 8px; 
-            box-shadow: 0 1px 2px 0 rgba(60,64,67,.3), 0 1px 3px 1px rgba(60,64,67,.15);
+            border-radius: 4px; 
             margin-bottom: 15px;
         }
         
-        /* Force Metric Text Visibility (Fixing the 'White Bucket' issue) */
-        [data-testid="stMetricLabel"] { color: #5F6368 !important; font-weight: 700 !important; font-size: 14px !important; }
-        [data-testid="stMetricValue"] { color: #1A73E8 !important; font-weight: 800 !important; }
-        [data-testid="stMetricDelta"] { font-weight: 700 !important; }
-
-        /* Typography */
-        h1, h2, h3, p, span { font-family: 'Roboto', 'Arial', sans-serif; color: #202124 !important; }
+        /* Global Text Overrides - Fixing Visibility */
+        p, span, label, h1, h2, h3 { color: #202124 !important; font-family: 'Roboto', Arial, sans-serif; }
         
-        /* Table / Matrix Styling */
-        .ag-theme-alpine { --ag-header-background-color: #F1F3F4; --ag-border-color: #DADCE0; }
+        /* Top Metrics Visibility (Fixing 'White Buckets') */
+        [data-testid="stMetricLabel"] { color: #5F6368 !important; font-weight: 700 !important; font-size: 13px !important; text-transform: uppercase; }
+        [data-testid="stMetricValue"] { color: #1A73E8 !important; font-weight: 800 !important; font-size: 28px !important; }
         
-        /* Custom Intelligence Grid */
-        .intel-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #F1F3F4; }
-        .intel-label { color: #5F6368; font-weight: 600; font-size: 13px; }
-        .intel-value { color: #202124; font-weight: 700; font-size: 14px; font-family: 'Courier New', monospace; }
+        /* Intelligence Grid Styling */
+        .grid-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #F1F3F4; }
+        .grid-label { color: #3C4043; font-weight: 500; font-size: 14px; }
+        .grid-value { color: #1A73E8; font-weight: 700; font-size: 14px; }
+        .grid-header { background-color: #F1F3F4; padding: 8px; font-weight: 700; font-size: 12px; color: #5F6368; margin-top: 10px; }
     </style>
 """, unsafe_allow_html=True)
 
-# 3. Sidebar Dictionary (The Reference Desk)
+# 3. Sidebar: Meaning of Fields (Left Side)
 with st.sidebar:
-    st.title("📑 Data Dictionary")
-    st.info("Hover over metrics for details. Below are the standard ranges for scoring:")
+    st.markdown("### 🔍 Field Definitions")
     st.markdown("""
-    **Primary Scales (0.00 to 1.00)**
-    * **0.60+ :** Strong / Positive 🟢
-    * **0.40 - 0.59 :** Neutral / Hold 🟡
-    * **0.00 - 0.39 :** Weak / Negative 🔴
     ---
-    **Definitions:**
-    * **Conviction:** Overall strength of the math.
-    * **Safety:** Resistance to market volatility.
-    * **Health:** Underlying business quality.
-    * **Professional Flow:** Institutional buying activity.
+    **Market Fear (VIX)**
+    *Range: 10 - 80* | Fear index.
+    
+    **Current Regime**
+    *Range: RISK_ON / OFF* | Trend mode.
+    
+    **Conviction (Hybrid)**
+    *Range: 0.0 - 1.0* | Master score.
+    
+    **Safety Buffer**
+    *Range: 0.0 - 1.0* | Resilience.
+    
+    **Financial Strength**
+    *Range: 0.0 - 1.0* | F-Score quality.
+    
+    **Portfolio Share**
+    *Range: 0% - 100%* | Capital weight.
+    
+    **Cash Required**
+    *Range: $ Value* | Trade amount.
+    
+    **Growth/Value Mix**
+    *Range: 0.0 - 1.0* | Valuation health.
+    
+    **Product Pipeline**
+    *Range: 0.0 - 1.0* | Future catalysts.
+    
+    **Professional Buying**
+    *Range: 0.0 - 1.0* | Institutional flow.
+    
+    **Wall St. Consensus**
+    *Range: 0.0 - 1.0* | Analyst ratings.
+    
+    **Stock Beta**
+    *Range: 0.0 - 3.0* | Market sensitivity.
+    
+    **Volatility Scaling**
+    *Range: 0.0 - 2.0* | Size adjustment.
+    
+    **Kelly Edge**
+    *Range: 0% - 100%* | Optimal bet size.
+    
+    **Sector Exposure**
+    *Range: 0% - 100%* | Industry risk.
     """)
 
-# 4. Database Connection
+# 4. Database Integration
 @st.cache_resource
 def get_db_connection():
     try:
@@ -68,7 +101,7 @@ def get_db_connection():
             user=creds["user"], password=creds["password"], sslmode="require"
         )
     except Exception as e:
-        st.error("❌ Database connection failed. Check your Streamlit Secrets.")
+        st.error("Connection Failed. Check Secrets.")
         return None
 
 @st.cache_data(ttl=60)
@@ -83,120 +116,96 @@ def load_full_data():
 
 raw_df, pivot_df = load_full_data()
 
-# 5. Top Navigation & Global Metrics
-t1, t2, t3, t4 = st.columns(4)
-with t1:
-    search_q = st.text_input("🔍 Search Ticker", placeholder="e.g. MSFT").upper()
-with t2:
+# 5. Top Metrics Bar
+m1, m2, m3, m4 = st.columns(4)
+with m1:
+    v_val = raw_df['vix'].iloc[-1] if not raw_df.empty else 0
+    st.metric("Market Fear Index", f"{v_val:.2f}")
+with m2:
+    r_val = raw_df['final_regime'].iloc[-1] if not raw_df.empty else "N/A"
+    st.metric("Current Regime", r_val)
+with m3:
+    st.text_input("🔍 Search", key="search_box", placeholder="Ticker...").upper()
+with m4:
     sector_list = ["All Sectors"] + sorted(pivot_df['sector'].unique().tolist())
-    sel_sector = st.selectbox("📁 Sector Filter", options=sector_list)
-with t3:
-    vix = raw_df['vix'].iloc[-1] if not raw_df.empty else 0
-    st.metric("Market Fear Index", f"{vix:.2f}", help="Volatility Index (VIX). Above 25 indicates panic.")
-with t4:
-    regime = raw_df['final_regime'].iloc[-1] if not raw_df.empty else "N/A"
-    st.metric("Current Regime", regime, help="The overall market environment trend.")
+    st.selectbox("📁 Sector", options=sector_list, key="sector_box")
 
-# 6. Main Content
-col_timeline, col_intel = st.columns([1.6, 1.4])
+# 6. Content Split
+col_matrix, col_grid = st.columns([1.7, 1.3])
 
-# Filter pivot
-filtered_pivot = pivot_df.copy()
-if search_q:
-    filtered_pivot = filtered_pivot[filtered_pivot['symbol'].str.contains(search_q)]
-if sel_sector != "All Sectors":
-    filtered_pivot = filtered_pivot[filtered_pivot['sector'] == sel_sector]
+# Filtering
+f_pivot = pivot_df.copy()
+if st.session_state.search_box:
+    f_pivot = f_pivot[f_pivot['symbol'].str.contains(st.session_state.search_box)]
+if st.session_state.sector_box != "All Sectors":
+    f_pivot = f_pivot[f_pivot['sector'] == st.session_state.sector_box]
 
-with col_timeline:
-    st.subheader("Signal Timeline")
-    gb = GridOptionsBuilder.from_dataframe(filtered_pivot)
+with col_matrix:
+    st.subheader("Signal Matrix")
+    gb = GridOptionsBuilder.from_dataframe(f_pivot)
     gb.configure_column("symbol", pinned="left", headerName="Ticker", width=100)
-    gb.configure_column("sector", pinned="left", headerName="Sector", width=140)
+    gb.configure_column("sector", pinned="left", headerName="Sector", width=130)
     
-    # Classic Contrast Heatmap
+    # High-Contrast Cell Styling
     signal_style = JsCode("""
     function(params) {
         if (!params.value) return {};
         const val = params.value.toUpperCase();
         if (val.includes('BULLISH')) return {backgroundColor: '#E6F4EA', color: '#137333', fontWeight: 'bold', border: '1px solid #CEEAD6'};
         if (val.includes('BEARISH')) return {backgroundColor: '#FCE8E6', color: '#C5221F', fontWeight: 'bold', border: '1px solid #FAD2CF'};
-        if (val.includes('NEUTRAL')) return {backgroundColor: '#F8F9FA', color: '#3C4043', border: '1px solid #DADCE0'};
-        return {};
+        return {backgroundColor: '#F8F9FA', color: '#3C4043', border: '1px solid #DADCE0'};
     }
     """)
     
-    date_cols = [c for c in filtered_pivot.columns if c not in ['symbol', 'sector']]
-    for c in date_cols:
+    for c in [col for col in f_pivot.columns if col not in ['symbol', 'sector']]:
         gb.configure_column(c, cellStyle=signal_style, width=110)
 
     gb.configure_selection(selection_mode="single")
-    gb.configure_grid_options(headerHeight=40, rowHeight=35)
+    gb.configure_grid_options(headerHeight=40, rowHeight=38)
     
-    grid_response = AgGrid(filtered_pivot, gridOptions=gb.build(), update_mode=GridUpdateMode.SELECTION_CHANGED, allow_unsafe_jscode=True, theme="alpine", height=750)
+    grid_response = AgGrid(f_pivot, gridOptions=gb.build(), update_mode=GridUpdateMode.SELECTION_CHANGED, allow_unsafe_jscode=True, theme="alpine", height=750)
 
-with col_intel:
-    selected_rows = grid_response.get('selected_rows')
-    has_selection = False
-    if selected_rows is not None:
-        if isinstance(selected_rows, pd.DataFrame) and not selected_rows.empty:
-            has_selection, sel_row = True, selected_rows.iloc[0]
-        elif isinstance(selected_rows, list) and len(selected_rows) > 0:
-            has_selection, sel_row = True, selected_rows[0]
+with col_grid:
+    # Handle Selection
+    selected = grid_response.get('selected_rows')
+    has_row = False
+    if selected is not None:
+        if isinstance(selected, pd.DataFrame) and not selected.empty:
+            has_row, sel_row = True, selected.iloc[0]
+        elif isinstance(selected, list) and len(selected) > 0:
+            has_row, sel_row = True, selected[0]
 
-    if has_selection:
+    if has_row:
         ticker = sel_row['symbol']
         hist = raw_df[raw_df['symbol'] == ticker].sort_values('asatdate', ascending=False)
+        st.markdown(f"## {ticker} Intelligence Grid")
+        date_pick = st.selectbox("Historical Date Selection", options=hist['date_str'].tolist())
+        d = hist[hist['date_str'] == date_pick].iloc[0]
+
+        # Intelligence Grid (The 15 Requested Fields)
+        def draw_row(label, val):
+            st.markdown(f'<div class="grid-row"><span class="grid-label">{label}</span><span class="grid-value">{val}</span></div>', unsafe_allow_html=True)
+
+        st.markdown('<div class="grid-header">PRIMARY SCORECARD</div>', unsafe_allow_html=True)
+        draw_row("Conviction (Hybrid)", f"{d['s_hybrid']:.4f}")
+        draw_row("Safety Buffer", f"{(1-d['risk_score']):.4f}")
+        draw_row("Financial Strength (F-Score)", f"{d['f_score']:.4f}")
         
-        st.markdown(f"## {ticker} Analysis")
-        date_pick = st.selectbox("Select Signal Date", options=hist['date_str'].tolist())
-        data = hist[hist['date_str'] == date_pick].iloc[0]
+        st.markdown('<div class="grid-header">TRADE EXECUTION</div>', unsafe_allow_html=True)
+        draw_row("Portfolio Share", f"{d['final_weight']:.2%}")
+        draw_row("Cash Required", f"${d['final_dollars']:,}")
+        draw_row("Kelly Edge", f"{d['kelly_fraction']:.2%}")
 
-        # Big Action Alert
-        act_map = {"ENTER": ("#137333", "#E6F4EA"), "EXIT": ("#C5221F", "#FCE8E6"), "WAIT": ("#3C4043", "#F1F3F4")}
-        txt_c, bg_c = act_map.get(data['action'], ("#3C4043", "#F1F3F4"))
+        st.markdown('<div class="grid-header">ANALYSIS & FLOW</div>', unsafe_allow_html=True)
+        draw_row("Growth/Value Mix", f"{d['gv_score']:.4f}")
+        draw_row("Product Pipeline", f"{d['pipeline_score']:.4f}")
+        draw_row("Professional Buying", f"{d['smart_money_score']:.4f}")
+        draw_row("Wall St. Consensus", f"{d['analyst_score']:.4f}")
+
+        st.markdown('<div class="grid-header">RISK DYNAMICS</div>', unsafe_allow_html=True)
+        draw_row("Stock Beta", f"{d['beta']:.2f}")
+        draw_row("Volatility Scaling", f"{d['vol_scale']:.2f}")
+        draw_row("Sector Exposure", f"{d['sector_weight']:.2%}")
         
-        st.markdown(f"""
-            <div style="background-color:{bg_c}; border: 2px solid {txt_c}; padding:15px; border-radius:8px; text-align:center;">
-                <h2 style="margin:0; color:{txt_c} !important;">{data['action']}</h2>
-                <p style="margin:0; font-weight:bold; color:{txt_c} !important;">{data['notes']}</p>
-            </div>
-        """, unsafe_allow_html=True)
-
-        st.divider()
-
-        # The Vertical Intelligence Grid (Every DB Field)
-        st.markdown("### 📊 Decision Intelligence")
-        
-        def intel_row(label, value, tooltip):
-            st.markdown(f"""
-                <div class="intel-row" title="{tooltip}">
-                    <span class="intel-label">{label}</span>
-                    <span class="intel-value">{value}</span>
-                </div>
-            """, unsafe_allow_html=True)
-
-        # Categorized Vertical Grid
-        with st.container():
-            st.write("**Core Conviction**")
-            intel_row("Conviction (Hybrid)", f"{data['s_hybrid']:.4f}", "The master score driving the signal.")
-            intel_row("Safety Buffer", f"{(1-data['risk_score']):.4f}", "How well the stock resists market drops.")
-            intel_row("Portfolio Share", f"{data['final_weight']:.2%}", "Percentage of your total money to invest.")
-            intel_row("Cash Required", f"${data['final_dollars']:,}", "Exact dollar amount to trade.")
-            
-            st.write("**Fundamental Health**")
-            intel_row("Financial Strength", f"{data['f_score']:.4f}", "F-Score: Measures balance sheet quality.")
-            intel_row("Growth/Value Mix", f"{data['gv_score']:.4f}", "Is the stock fairly priced for its growth?")
-            intel_row("Product Pipeline", f"{data['pipeline_score']:.4f}", "Future revenue potential.")
-            
-            st.write("**Market Sentiment**")
-            intel_row("Professional Buying", f"{data['smart_money_score']:.4f}", "Institutional 'Smart Money' flow.")
-            intel_row("Wall St. Consensus", f"{data['analyst_score']:.4f}", "Average rating from investment banks.")
-            
-            st.write("**Risk & Scaling**")
-            intel_row("Stock Beta", f"{data['beta']:.2f}", "Sensitivity to the general market (1.0 is average).")
-            intel_row("Volatility Scaling", f"{data['vol_scale']:.2f}", "How the system adjusted for current volatility.")
-            intel_row("Kelly Edge", f"{data['kelly_fraction']:.2%}", "The mathematical optimal bet size.")
-            intel_row("Sector Exposure", f"{data['sector_weight']:.2%}", "How much of this sector you already own.")
-
     else:
-        st.warning("Please click a row in the Timeline Matrix to view the Intel Grid.")
+        st.info("👈 Select a Ticker to display Intelligence Grid.")
