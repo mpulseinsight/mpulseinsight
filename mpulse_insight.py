@@ -4,87 +4,84 @@ import psycopg2
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, JsCode
 
 # 1. Page Configuration
-st.set_page_config(page_title="mPulse Intelligence", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="mPulse Pro", layout="wide", initial_sidebar_state="expanded")
 
-# 2. Advanced Professional CSS
-st.markdown("""
-    <style>
-        /* Main background and font */
-        .stApp { background-color: #F8F9FA; }
-        
-        /* Metric Card Styling */
-        div[data-testid="stMetric"] {
-            background-color: white;
-            border: 1px solid #E0E0E0;
-            padding: 15px;
-            border-radius: 10px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        }
-
-        /* Grouping Logic Containers */
-        .logic-card {
-            background-color: white;
-            padding: 20px;
-            border-radius: 10px;
-            border-left: 5px solid #1A73E8;
-            margin-bottom: 20px;
-        }
-        
-        /* Remove extra padding */
-        .block-container { padding-top: 1rem !important; }
-    </style>
-""", unsafe_allow_html=True)
-
-# 3. Comprehensive Data Dictionary (The "Meaning" Map)
-FIELD_GROUPS = {
-    "🎯 Core Strategy": {
-        "execution_stance": "Strategy Type",
-        "suggested_action": "Current Instruction",
-        "signal": "Daily Bias",
-        "signal_60d": "60D Horizon",
-        "target_pct": "Optimal Target %"
+# 2. THE MASTER METADATA DICTIONARY (Fixed & Centralized)
+# This explains every SQL field and the signal logic
+METADATA = {
+    "Execution Signals": {
+        "signal": "Daily Pulse: Short-term momentum direction (Bullish/Bearish).",
+        "signal_60d": "Structural Horizon: 60-day trend strength and safety.",
+        "execution_stance": "Strategic Stance: The final decision (CORE_LONG, TACTICAL, etc).",
+        "suggested_action": "Tactical Instruction: Specific trade move (Buy, Trim, etc)."
     },
-    "📊 Momentum & Trend": {
-        "s_hybrid": "Pulse Score",
-        "s_structural": "Structural Health",
-        "s_sector": "Sector Score",
-        "trend_regime": "Trend State"
+    "Math & Logic Fields": {
+        "s_hybrid": "Pulse Score (0-1): Higher means stronger immediate momentum.",
+        "s_structural": "Structural Score (0-1): Higher means better long-term trend.",
+        "f_score": "Financial Health: Company's balance sheet strength.",
+        "smart_money_score": "Institutional Flow: Are big banks buying?",
+        "kelly_fraction": "Confidence Level: The statistical 'bet size' multiplier.",
+        "final_weight": "Portfolio Allocation: The actual % of your book to invest."
     },
-    "🛡️ Risk & Allocation": {
-        "final_weight": "Portfolio Weight",
-        "final_dollars": "Dollar Size",
-        "kelly_fraction": "Kelly Confidence",
-        "vol_scale": "Vol Adjuster",
-        "beta": "Sensitivity (Beta)",
-        "risk_score": "Internal Risk Score"
-    },
-    "🏢 Fundamental & Sentiment": {
-        "f_score": "Financial Health",
-        "gv_score": "Growth/Value Ratio",
-        "smart_money_score": "Institutional Accum.",
-        "analyst_score": "Wall Street Rating"
+    "Market Environment": {
+        "vix_regime": "Fear Level: High/Low volatility state.",
+        "trend_regime": "Market Direction: Overall S&P 500 health.",
+        "final_regime": "Unified Regime: The final 'weather' condition for trading."
     }
 }
 
-# 4. Popups
-@st.dialog("Complete Technical Audit", width="large")
-def show_full_audit(ticker, raw_data):
-    st.subheader(f"Full Data Audit: {ticker}")
+# 3. CSS for Readable Upper Buckets (Metrics)
+st.markdown("""
+    <style>
+        /* Make Metric Labels Bold and Large */
+        [data-testid="stMetricLabel"] { 
+            font-size: 16px !important; 
+            font-weight: 700 !important; 
+            color: #5F6368 !important; 
+        }
+        /* Make Metric Values POP */
+        [data-testid="stMetricValue"] { 
+            font-size: 28px !important; 
+            color: #1A73E8 !important; 
+        }
+        /* Metric Card Container */
+        [data-testid="metric-container"] {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #E0E0E0;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
+# 4. Master Technical Audit & Dictionary Window
+@st.dialog("Metadata & Technical Audit", width="large")
+def show_tech_audit(ticker, raw_data):
+    st.title(f"🔍 Deep Audit: {ticker}")
     d = raw_data[raw_data['symbol'] == ticker].sort_values('tradedate', ascending=False).iloc[0]
     
-    # Render fields in meaningful groups
-    cols = st.columns(2)
-    for i, (group_name, fields) in enumerate(FIELD_GROUPS.items()):
-        with cols[i % 2]:
-            st.markdown(f"#### {group_name}")
-            for key, label in fields.items():
-                val = d.get(key, "N/A")
-                # Formatting
-                if isinstance(val, float): val = f"{val:.4f}"
-                if "weight" in key or "pct" in key: val = f"{float(val)*100:.2f}%" if val != "N/A" else "N/A"
-                
-                st.write(f"**{label}**: `{val}`")
-            st.markdown("---")
+    # Toggle between Data Values and Definitions
+    tab1, tab2 = st.tabs(["📊 Current Values", "📖 Field Dictionary"])
+    
+    with tab1:
+        st.markdown("#### Live SQL Field Values")
+        cols = st.columns(3)
+        # Iterate through all fields in the DB row
+        all_fields = list(d.index)
+        for i, field in enumerate(all_fields):
+            with cols[i % 3]:
+                val = d[field]
+                # Readable formatting
+                if isinstance(val, float): val = round(val, 4)
+                st.markdown(f"**{field}**")
+                st.code(val)
+
+    with tab2:
+        st.markdown("#### What do these fields mean?")
+        for category, items in METADATA.items():
+            with st.expander(category, expanded=True):
+                for field, definition in items.items():
+                    st.write(f"**{field}**: {definition}")
 
 # 5. Data Engine
 @st.cache_data(ttl=60)
@@ -95,103 +92,81 @@ def load_data():
                                 user=creds["user"], password=creds["password"], sslmode="require")
         df = pd.read_sql("SELECT * FROM mpulse_execution_results ORDER BY tradedate ASC", conn)
         conn.close()
-        
         df['date_str'] = df['tradedate'].astype(str)
         return df
     except Exception as e:
-        st.error(f"Data Load Error: {e}")
+        st.error(f"Error: {e}")
         return pd.DataFrame()
 
-# 6. UI Structure
 raw_df = load_data()
 
-with st.sidebar:
-    st.title("Settings")
-    view_daily = st.checkbox("Show Daily Signal", value=True)
-    view_60d = st.checkbox("Show 60D Signal", value=True)
-    st.markdown("---")
-    st.markdown("### 🔍 Perspective Help")
-    st.caption("Daily: Focused on 1-5 day swings.\n60D: Focused on multi-week structure.")
-
-# Top KPI Ribbon
+# 6. Upper Buckets (The KPI Ribbon)
 if not raw_df.empty:
-    latest_market = raw_df.iloc[-1]
+    latest = raw_df.iloc[-1]
+    # Spaced out for readability
+    st.markdown("### Market Context")
     k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Regime", latest_market['final_regime'])
-    k2.metric("VIX Level", f"{latest_market['vix']:.2f}")
-    k3.metric("SPX Trend", latest_market['trend_regime'])
-    k4.metric("Active Coverage", len(raw_df['symbol'].unique()))
+    k1.metric("Current Regime", latest['final_regime'])
+    k2.metric("Market Fear (VIX)", f"{latest['vix']:.2f}")
+    k3.metric("Trend State", latest['trend_regime'])
+    k4.metric("Risk Level", "SAFE" if latest['vix'] < 20 else "CAUTION")
 
-# 7. Main Matrix
-st.markdown("### Market Intelligence Matrix")
+# 7. Main Grid Logic
+st.markdown("---")
+st.markdown("### Matrix: Daily & 60-Day Intelligence")
 
-# Prepare Pivot
-def fmt_cell(row):
-    p = []
-    if view_daily: p.append(row['signal'])
-    if view_60d: p.append(f"🛡️ {row['signal_60d']}")
-    return " | ".join(p)
+with st.sidebar:
+    st.header("Perspective")
+    view_daily = st.checkbox("Daily Signal", value=True)
+    view_60d = st.checkbox("60-Day Signal", value=True)
 
-raw_df['cell_val'] = raw_df.apply(fmt_cell, axis=1)
+# Prepare combined display for Grid
+def combine_sig(row):
+    bits = []
+    if view_daily: bits.append(str(row['signal']))
+    if view_60d: bits.append(f"🛡️ {row['signal_60d']}")
+    return " | ".join(bits) if bits else "---"
+
+raw_df['grid_display'] = raw_df.apply(combine_sig, axis=1)
 recent_dates = sorted(raw_df['date_str'].unique().tolist(), reverse=True)[:5]
-pivot = raw_df.pivot_table(index=['symbol', 'sector'], columns='date_str', values='cell_val', aggfunc='first').reset_index()
+pivot = raw_df.pivot_table(index=['symbol', 'sector'], columns='date_str', values='grid_display', aggfunc='first').reset_index()
 
+# Grid Builder
 gb = GridOptionsBuilder.from_dataframe(pivot)
-gb.configure_default_column(resizable=True, filterable=True, sortable=True)
 gb.configure_column("symbol", pinned="left", header_name="Ticker", width=100)
 gb.configure_column("sector", header_name="Industry", width=140)
 
-# Make Date Columns Expandable and Clear
 js_style = JsCode("""
 function(params) {
     if (!params.value) return {};
     const v = params.value.toUpperCase();
-    if (v.includes('BUY') || v.includes('BULLISH')) return {backgroundColor: '#E6F4EA', color: '#137333', fontWeight: 'bold'};
-    if (v.includes('SELL') || v.includes('BEARISH')) return {backgroundColor: '#FCE8E6', color: '#C5221F', fontWeight: 'bold'};
+    if (v.includes('BUY') || v.includes('BULLISH')) return {backgroundColor: '#E6F4EA', color: '#137333', fontWeight: '900'};
+    if (v.includes('SELL') || v.includes('BEARISH')) return {backgroundColor: '#FCE8E6', color: '#C5221F', fontWeight: '900'};
     return {color: '#5F6368'};
 }
 """)
 
 for d_col in recent_dates:
-    gb.configure_column(d_col, width=220, cellStyle=js_style) # Fixed width for visibility
+    gb.configure_column(d_col, width=220, cellStyle=js_style)
 
 gb.configure_selection(selection_mode="single")
 grid_out = AgGrid(pivot, gridOptions=gb.build(), allow_unsafe_jscode=True, height=450, theme="alpine")
 
-# 8. Intelligence Panel
-st.markdown("---")
+# 8. Lower Intel Panel
 sel = grid_out.get('selected_rows')
 if sel is not None and len(sel) > 0:
     row = sel.iloc[0] if isinstance(sel, pd.DataFrame) else sel[0]
     ticker = row['symbol']
     d = raw_df[raw_df['symbol'] == ticker].sort_values('tradedate', ascending=False).iloc[0]
 
+    st.markdown("---")
     c1, c2 = st.columns([1, 2])
-    
     with c1:
-        st.markdown(f"## {ticker}")
-        st.markdown(f"**Industry:** {d['sector']}")
-        st.button("🔬 Open Full Technical Audit", on_click=show_full_audit, args=(ticker, raw_df))
-        
-        st.markdown(f"""
-            <div class="logic-card">
-                <p style="margin:0; font-size:12px; color:#5F6368;">RECOMMENDED ACTION</p>
-                <h3 style="margin:0; color:#1A73E8;">{d['suggested_action']}</h3>
-                <p style="margin:0; font-weight:bold;">{d['execution_stance']}</p>
-            </div>
-        """, unsafe_allow_html=True)
-
+        st.header(ticker)
+        st.write(f"**Strategy:** {d['execution_stance']}")
+        st.button("🔬 Audit All Fields & Dictionary", on_click=show_tech_audit, args=(ticker, raw_df))
+    
     with c2:
-        st.markdown("### Confidence Matrix")
-        f1, f2, f3 = st.columns(3)
-        # Showing nested fields in logical spots
-        f1.metric("Pulse Score", f"{d['s_hybrid']:.2f}")
-        f2.metric("Structure", f"{d['s_structural']:.2f}")
-        f3.metric("Final Weight", f"{d['final_weight']*100:.2f}%")
-        
-        # Progress bars for a "Health Check" feel
-        st.progress(float(d['smart_money_score']), text=f"Institutional Accumulation: {d['smart_money_score']:.2f}")
-        st.progress(float(d['f_score']), text=f"Financial Health: {d['f_score']:.2f}")
-        st.progress(float(d['sector_strength']), text=f"Sector Breadth: {d['sector_strength']:.2f}")
-else:
-    st.info("Select a ticker from the matrix to view the deep intelligence profile.")
+        st.info(f"**Instruction:** {d['suggested_action']}")
+        st.progress(float(d['s_hybrid']), text=f"Daily Momentum: {d['s_hybrid']:.2f}")
+        st.progress(float(d.get('s_structural', 0)), text=f"60D Structure: {d.get('s_structural', 0):.2f}")
