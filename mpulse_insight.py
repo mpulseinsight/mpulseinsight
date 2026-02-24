@@ -4,64 +4,54 @@ import psycopg2
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, JsCode
 
 # 1. Page Configuration
-st.set_page_config(page_title="mPulse Intelligence", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="mPulse Pro Console", layout="wide", initial_sidebar_state="collapsed")
 
-# 2. State Management for the "Slider/Drawer"
-if 'drawer_open' not in st.session_state:
-    st.session_state.drawer_open = True
+# 2. Session State for the "Slider" Position
+if 'slider_state' not in st.session_state:
+    st.session_state.slider_state = "open" # Options: "open", "closed"
 
-# 3. Custom CSS for the "Right Slide-Out" Look
+# 3. CSS for the Right-Side Panel and Instruction Box
 st.markdown("""
     <style>
+        /* Compact Header */
         .hero-banner {
             background-color: #ffffff;
             border-bottom: 1px solid #DADCE0;
-            padding: 8px 25px;
+            padding: 10px 20px;
             margin: -3rem -5rem 1rem -5rem;
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
+
+        /* High-Contrast Instruction Box (Fixed white font issue) */
+        .instruction-box {
+            background-color: #1A73E8;
+            color: #FFFFFF !important;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .instruction-box b { color: #FFFFFF !important; font-size: 1.2rem; }
         
-        /* The Inspector 'Drawer' Styling */
-        .meta-drawer {
+        /* The Vertical Data Container (Scrollable) */
+        .meta-slider-window {
             background-color: #ffffff;
             border: 1px solid #DADCE0;
             border-radius: 8px;
+            height: 70vh;
+            overflow-y: auto;
             padding: 15px;
-            height: 75vh;
-            display: flex;
-            flex-direction: column;
         }
-
-        .instruction-card {
-            background-color: #1A73E8;
-            color: white !important;
-            padding: 12px;
-            border-radius: 6px;
-            margin-bottom: 10px;
-        }
-
-        /* The Vertical Data Slider (Scrollable Area) */
-        .vertical-slider {
-            flex-grow: 1;
-            overflow-y: scroll;
-            margin-top: 10px;
-            padding-right: 5px;
-            border-top: 1px solid #eee;
-        }
-
-        .data-row {
+        .meta-row {
             display: flex;
             justify-content: space-between;
             padding: 8px 0;
-            border-bottom: 1px solid #F8F9FA;
+            border-bottom: 1px solid #F1F3F4;
         }
-        .label { color: #5F6368; font-size: 0.7rem; font-weight: bold; text-transform: uppercase; }
-        .val { color: #202124; font-size: 0.85rem; font-family: monospace; }
-        
-        /* Sidebar Button Styling */
-        .stButton>button { width: 100%; border-radius: 20px; }
+        .meta-label { color: #5F6368; font-size: 0.75rem; font-weight: bold; text-transform: uppercase; }
+        .meta-value { color: #202124; font-size: 0.85rem; font-family: 'Courier New', monospace; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -81,51 +71,56 @@ def load_data():
 
 raw_df = load_data()
 
-# 5. Header
+# 5. Top Bar
 if not raw_df.empty:
     top = raw_df.iloc[0]
-    st.markdown(f"""<div class="hero-banner">
-        <span style="font-weight:500; font-size:1.1rem;">Signal Intelligence</span>
-        <span style="font-size:0.9rem; color:#5F6368;">
-            Market: <b style="color:#1A73E8;">{top['final_regime']}</b> | VIX: <b>{top['vix']:.2f}</b>
-        </span>
-    </div>""", unsafe_allow_html=True)
+    st.markdown(f"""
+        <div class="hero-banner">
+            <span style="font-weight:500; font-size:1.1rem;">Signal Intelligence</span>
+            <span style="font-size:0.9rem; color:#5F6368;">
+                Market: <b style="color:#1A73E8;">{top['final_regime']}</b> | VIX: <b>{top['vix']:.2f}</b>
+            </span>
+        </div>
+    """, unsafe_allow_html=True)
 
-# 6. Sidebar Controls
+# 6. Sidebar (Left)
 with st.sidebar:
-    st.title("Navigation")
-    perspective = st.radio("Grid Focus", ["Daily", "60-Day"])
+    st.header("Settings")
+    view_mode = st.radio("Grid View", ["Daily", "60-Day"])
     st.markdown("---")
-    # Toggle logic for the right-side "Slider"
-    if st.session_state.drawer_open:
-        if st.button("⬅️ Close Inspector"):
-            st.session_state.drawer_open = False
+    search_input = st.text_input("🔍 Search Ticker").upper()
+
+# 7. Layout Toggle (The "Slider" Switch)
+# This acts as the physical toggle to minimize/maximize the metadata window
+c1, c2 = st.columns([2, 1])
+with c1:
+    if st.session_state.slider_state == "open":
+        if st.button("↔️ Maximize Grid (Close Slider)"):
+            st.session_state.slider_state = "closed"
             st.rerun()
     else:
-        if st.button("➡️ Open Inspector"):
-            st.session_state.drawer_open = True
+        if st.button("🔍 Open Asset Slider"):
+            st.session_state.slider_state = "open"
             st.rerun()
-    st.markdown("---")
-    search_q = st.text_input("Ticker Search").upper()
 
-# 7. Layout Management
-if st.session_state.drawer_open:
-    col_main, col_drawer = st.columns([2.2, 0.8])
+# 8. Adaptive Grid/Metadata Layout
+if st.session_state.slider_state == "open":
+    col_grid, col_meta = st.columns([2.2, 0.8])
 else:
-    col_main, col_drawer = st.columns([2.98, 0.02])
+    col_grid, col_meta = st.columns([1, 0.001]) # Effectively 100% width
 
-# 8. Main Grid
-with col_main:
+# 9. Main Matrix
+with col_grid:
     if not raw_df.empty:
         f_df = raw_df.copy()
-        if search_q: f_df = f_df[f_df['symbol'].str.contains(search_q)]
+        if search_input: f_df = f_df[f_df['symbol'].str.contains(search_input)]
         
-        sig_col = 'signal' if perspective == "Daily" else 'signal_60d'
-        dates = sorted(f_df['date_str'].unique(), reverse=True)[:5]
+        sig_col = 'signal' if view_mode == "Daily" else 'signal_60d'
+        recent_dates = sorted(f_df['date_str'].unique(), reverse=True)[:5]
         pivot = f_df.pivot_table(index=['symbol', 'sector'], columns='date_str', values=sig_col, aggfunc='first').reset_index()
 
         gb = GridOptionsBuilder.from_dataframe(pivot)
-        gb.configure_column("symbol", pinned="left", width=90)
+        gb.configure_column("symbol", pinned="left", width=100)
         gb.configure_selection(selection_mode="single")
         
         js_color = JsCode("""
@@ -137,43 +132,40 @@ with col_main:
             return {color: '#5F6368'};
         }
         """)
-        for d in dates: gb.configure_column(d, cellStyle=js_color, width=150)
+        for d in recent_dates: gb.configure_column(d, cellStyle=js_color, width=145)
 
-        grid_out = AgGrid(pivot, gridOptions=gb.build(), height=650, theme="balham", allow_unsafe_jscode=True, update_mode=GridUpdateMode.SELECTION_CHANGED)
+        grid_resp = AgGrid(pivot, gridOptions=gb.build(), height=600, theme="balham", allow_unsafe_jscode=True, update_mode=GridUpdateMode.SELECTION_CHANGED)
 
-# 9. The Right Side "Slider/Drawer"
-if st.session_state.drawer_open:
-    with col_drawer:
-        st.markdown("### Asset Audit")
-        sel = grid_out.get('selected_rows')
+# 10. The Right-Side Sliding Metadata Inspector
+if st.session_state.slider_state == "open":
+    with col_meta:
+        st.markdown("### Asset Inspector")
+        selection = grid_resp.get('selected_rows')
         
-        if sel is not None and (isinstance(sel, pd.DataFrame) and not sel.empty or len(sel) > 0):
-            ticker = (sel.iloc[0] if isinstance(sel, pd.DataFrame) else sel[0])['symbol']
+        if selection is not None and (isinstance(selection, pd.DataFrame) and not selection.empty or len(selection) > 0):
+            ticker = (selection.iloc[0] if isinstance(selection, pd.DataFrame) else selection[0])['symbol']
             data = raw_df[raw_df['symbol'] == ticker].iloc[0]
 
-            # Strategy Banner
+            # Instruction Box
             st.markdown(f"""
-                <div class="instruction-card">
-                    <small>INSTRUCTION</small><br>
-                    <b style="font-size:1.2rem;">{data['suggested_action']}</b><br>
-                    <small>{data['execution_stance']}</small>
+                <div class="instruction-box">
+                    <small style="text-transform:uppercase; font-size:0.7rem; opacity:0.8;">Instruction</small><br>
+                    <b>{data['suggested_action']}</b><br>
+                    <div style="font-size:0.8rem; margin-top:5px; opacity:0.9;">{data['execution_stance']}</div>
                 </div>
             """, unsafe_allow_html=True)
 
-            # Metadata Scrollable Slider Area
-            st.markdown('<div class="meta-drawer">', unsafe_allow_html=True)
-            st.markdown("<b>Technical Attributes</b>", unsafe_allow_html=True)
-            
-            st.markdown('<div class="vertical-slider">', unsafe_allow_html=True)
+            # Scrollable Metadata List (The "Slider" content)
+            st.markdown('<div class="meta-slider-window">', unsafe_allow_html=True)
             for k, v in data.items():
                 if k in ['date_str', 'tradedate', 'symbol']: continue
-                val_formatted = f"{v:.4f}" if isinstance(v, float) else str(v)
+                val_str = f"{v:.4f}" if isinstance(v, float) else str(v)
                 st.markdown(f"""
-                    <div class="data-row">
-                        <span class="label">{k.replace('_', ' ')}</span>
-                        <span class="val">{val_formatted}</span>
+                    <div class="meta-row">
+                        <span class="meta-label">{k.replace('_', ' ')}</span>
+                        <span class="meta-val">{val_str}</span>
                     </div>
                 """, unsafe_allow_html=True)
-            st.markdown('</div></div>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
         else:
-            st.info("Select a ticker to activate the inspector drawer.")
+            st.info("Select a ticker in the matrix to load technical metadata.")
