@@ -80,7 +80,7 @@ def explain_signal(signal, perspective):
     else:
         return "❌ **No Trade.** Multiple red flags."
 
-# 4. Data Loading
+# 4. FIXED Data Loading
 @st.cache_data(ttl=60)
 def load_data():
     try:
@@ -89,8 +89,12 @@ def load_data():
                                 user=creds["user"], password=creds["password"], sslmode="require")
         df = pd.read_sql("SELECT * FROM mpulse_execution_results ORDER BY tradedate DESC", conn)
         conn.close()
+        
         if not df.empty:
+            # FIX: Convert tradedate to datetime FIRST, THEN format
+            df['tradedate'] = pd.to_datetime(df['tradedate'], errors='coerce')
             df['date_str'] = df['tradedate'].dt.strftime('%Y-%m-%d')
+            
         return df
     except Exception as e:
         st.error(f"DB Error: {e}")
@@ -147,18 +151,18 @@ if not raw_df.empty:
     # Filter data
     df_filtered = raw_df.copy()
     if search_ticker:
-        df_filtered = df_filtered[df_filtered['symbol'].str.contains(search_ticker)]
-    if sector_filter:
+        df_filtered = df_filtered[df_filtered['symbol'].str.contains(search_ticker, na=False)]
+    if len(sector_filter) > 0:
         df_filtered = df_filtered[df_filtered['sector'].isin(sector_filter)]
     
     # Get recent dates (5 latest)
-    recent_dates = sorted(df_filtered['date_str'].unique())[-5:]
+    recent_dates = sorted(df_filtered['date_str'].dropna().unique())[-5:]
     
     # Pivot for matrix
     pivot_df = df_filtered.pivot_table(
         index=['symbol', 'sector'], 
         columns='date_str', 
-        values='signal' if perspective != "60-Day Signals 🛡️" else 'signal_60d',
+        values='signal' if "Daily" in perspective else 'signal_60d',
         aggfunc='last'
     ).fillna('').reset_index()
     
@@ -192,9 +196,9 @@ if not raw_df.empty:
         
         # Color ALL date columns
         for date_col in recent_dates:
-            gb.configure_column(date_col, cellStyle=cell_style_js, width=140)
+            if date_col in pivot_df.columns:
+                gb.configure_column(date_col, cellStyle=cell_style_js, width=140)
         
-        # Pin symbol/sector, sortable confidence
         gb.configure_grid_options(domLayout='normal', suppressRowClickSelection=True)
         
         grid_response = AgGrid(
@@ -215,7 +219,7 @@ if not raw_df.empty:
             
             # Find latest data for this symbol
             symbol = row_data['symbol']
-            latest_symbol_data = raw_df[raw_df['symbol'] == symbol].iloc[0]
+            latest_symbol_data = raw_df[raw_df['symbol'] == symbol].dropna(subset=['tradedate']).iloc[0]
             
             # Top: Signal Header with Color + Explanation
             current_signal = latest_symbol_data.get('signal', 'NEUTRAL')
@@ -248,10 +252,10 @@ if not raw_df.empty:
             }
             
             for key, value in metrics_data.items():
-                if pd.notna(value):
+                if pd.notna(value) and value is not None:
                     label = FACTOR_LABELS.get(key, key.replace('_', ' ').title())
-                    val_str = f"{value:.1f}" if isinstance(value, (int, float)) else str(value)
-                    color = '🟢' if value > 70 else '🟡' if value > 40 else '🔴'
+                    val_str = f"{float(value):.1f}" if isinstance(value, (int, float)) else str(value)
+                    color = '🟢' if float(value) > 70 else '🟡' if float(value) > 40 else '🔴'
                     
                     st.markdown(f"**{label}:** {color} {val_str}")
             
