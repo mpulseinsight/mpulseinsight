@@ -4,51 +4,54 @@ import psycopg2
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, JsCode
 
 # 1. Page Configuration
-st.set_page_config(page_title="mPulse Intelligence", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="mPulse Pro", layout="wide", initial_sidebar_state="expanded")
 
-# 2. Refined CSS (Theme-Agnostic & High Contrast)
+# 2. Refined CSS for the "Slider Window"
 st.markdown("""
     <style>
-        /* Compact Header Bar */
+        /* Compact Header */
         .hero-banner {
             background-color: #ffffff;
             border-bottom: 1px solid #DADCE0;
-            padding: 8px 20px;
+            padding: 6px 20px;
             margin: -3rem -5rem 1rem -5rem;
             display: flex;
             justify-content: space-between;
-            align-items: center;
         }
         
-        /* Fixed Instruction Box - High Contrast */
-        .instruction-card {
-            background-color: #E8F0FE; /* Light Blue BG */
-            border-left: 5px solid #1A73E8;
-            padding: 12px;
-            border-radius: 4px;
-            margin-bottom: 15px;
-            color: #202124 !important; /* Force Dark Text */
-        }
-        .instruction-label { font-size: 0.75rem; font-weight: 700; color: #1A73E8; margin-bottom: 2px; }
-        .instruction-value { font-size: 1.1rem; font-weight: 700; color: #174EA6; }
-
-        /* Vertical Meta-Slider (Right Side) */
-        .meta-slider {
+        /* The Inspector Box (The 'Slider' Window) */
+        .inspector-window {
             background-color: #ffffff;
             border: 1px solid #DADCE0;
             border-radius: 8px;
-            height: 70vh;
-            overflow-y: scroll;
-            padding: 10px;
+            padding: 15px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        /* High-Contrast Instruction Box */
+        .instruction-card {
+            background-color: #1A73E8;
+            color: #ffffff !important;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+        }
+
+        /* Metadata List */
+        .meta-scroll {
+            height: 60vh;
+            overflow-y: auto;
+            border-top: 1px solid #eee;
+            margin-top: 10px;
         }
         .meta-row {
             display: flex;
             justify-content: space-between;
-            padding: 6px 0;
-            border-bottom: 1px solid #F1F3F4;
+            padding: 8px 0;
+            border-bottom: 1px solid #F8F9FA;
         }
-        .meta-key { color: #5F6368; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }
-        .meta-val { color: #202124; font-size: 0.85rem; font-weight: 500; font-family: monospace; }
+        .meta-label { color: #5F6368; font-size: 0.75rem; font-weight: bold; text-transform: uppercase; }
+        .meta-value { color: #202124; font-size: 0.85rem; font-family: 'Courier New', monospace; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -68,46 +71,48 @@ def load_data():
 
 raw_df = load_data()
 
-# 4. Compact Top Bar
+# 4. Top Hero Bar
 if not raw_df.empty:
     top = raw_df.iloc[0]
     st.markdown(f"""
         <div class="hero-banner">
-            <span style="font-size:1.1rem; font-weight:500;">Signal Intelligence</span>
-            <span style="font-size:0.9rem; color:#5F6368;">
-                State: <b style="color:#1A73E8;">{top['final_regime']}</b> | 
-                VIX: <b style="color:#202124;">{top['vix']:.2f}</b>
+            <span style="font-weight:500;">Signal Intelligence</span>
+            <span style="font-size:0.85rem; color:#5F6368;">
+                State: <b style="color:#1A73E8;">{top['final_regime']}</b> | VIX: <b>{top['vix']:.2f}</b>
             </span>
         </div>
     """, unsafe_allow_html=True)
 
-# 5. Sidebar Navigation
+# 5. Sidebar - Perspective & Hide Toggle
 with st.sidebar:
-    st.header("Settings")
-    view_type = st.radio("Signal Perspective", ["Daily Perspective", "60-Day Perspective"])
+    st.header("Dashboard Control")
+    view_type = st.radio("Signal Mode", ["Daily", "60-Day"])
+    show_inspector = st.checkbox("Show Asset Inspector", value=True)
     st.markdown("---")
-    ticker_input = st.text_input("🔍 Search Ticker").upper()
+    search_ticker = st.text_input("🔍 Ticker Search").upper()
 
-# 6. Main Content Split
-col_left, col_right = st.columns([2.2, 0.8])
+# 6. Content Split: Adjust ratio based on "Minimize" toggle
+if show_inspector:
+    col_main, col_side = st.columns([2.3, 0.7])
+else:
+    col_main, col_side = st.columns([3, 0.01]) # Minimize side column
 
 if not raw_df.empty:
-    # Filtering
+    # Filter and Pivot
     f_df = raw_df.copy()
-    if ticker_input: f_df = f_df[f_df['symbol'].str.contains(ticker_input)]
+    if search_ticker: f_df = f_df[f_df['symbol'].str.contains(search_ticker)]
     
-    # Pivot Logic
-    sig_field = 'signal' if view_type == "Daily Perspective" else 'signal_60d'
+    sig_field = 'signal' if view_type == "Daily" else 'signal_60d'
     recent_dates = sorted(f_df['date_str'].unique(), reverse=True)[:5]
     pivot = f_df.pivot_table(index=['symbol', 'sector'], columns='date_str', 
                              values=sig_field, aggfunc='first').reset_index()
 
-    with col_left:
+    with col_main:
+        st.markdown(f"### Market Matrix ({view_type})")
         gb = GridOptionsBuilder.from_dataframe(pivot)
         gb.configure_column("symbol", pinned="left", width=100)
         gb.configure_selection(selection_mode="single")
         
-        # Color Logic
         js_color = JsCode("""
         function(params) {
             if (!params.value) return {};
@@ -117,51 +122,48 @@ if not raw_df.empty:
             return {color: '#5F6368'};
         }
         """)
-        for d in recent_dates: gb.configure_column(d, cellStyle=js_color, width=140)
+        for d in recent_dates: gb.configure_column(d, cellStyle=js_color, width=150)
 
-        grid_resp = AgGrid(pivot, gridOptions=gb.build(), height=600, theme="balham", 
+        grid_resp = AgGrid(pivot, gridOptions=gb.build(), height=650, theme="balham", 
                            allow_unsafe_jscode=True, update_mode=GridUpdateMode.SELECTION_CHANGED)
 
-    # 7. THE RIGHT SIDE SLIDER (Meta-Inspector)
-    with col_right:
-        st.markdown("### Asset Inspector")
-        selection = grid_resp.get('selected_rows')
-        
-        if selection is not None and len(selection) > 0:
-            # Sync selection across Daily/60D views
-            sel_ticker = (selection.iloc[0] if isinstance(selection, pd.DataFrame) else selection[0])['symbol']
-            data = raw_df[raw_df['symbol'] == sel_ticker].iloc[0]
+    # 7. THE RIGHT SIDE SLIDER WINDOW
+    if show_inspector:
+        with col_side:
+            st.markdown("### Asset Inspector")
+            selection = grid_resp.get('selected_rows')
+            
+            if selection is not None and len(selection) > 0:
+                ticker = (selection.iloc[0] if isinstance(selection, pd.DataFrame) else selection[0])['symbol']
+                data = raw_df[raw_df['symbol'] == ticker].iloc[0]
 
-            # Clear, Readable Instruction Card
-            st.markdown(f"""
-                <div class="instruction-card">
-                    <div class="instruction-label">ACTIONABLE INSTRUCTION</div>
-                    <div class="instruction-value">{data['suggested_action']}</div>
-                    <div style="font-size:0.8rem; margin-top:5px; opacity:0.8;">
-                        {data['execution_stance']} • {view_type}
+                # 1. Instruction Card
+                st.markdown(f"""
+                    <div class="instruction-card">
+                        <div style="font-size:0.7rem; opacity:0.9;">SUGGESTED ACTION</div>
+                        <div style="font-size:1.2rem; font-weight:bold;">{data['suggested_action']}</div>
+                        <div style="font-size:0.8rem; margin-top:4px; opacity:0.8;">{data['execution_stance']}</div>
                     </div>
-                </div>
-            """, unsafe_allow_html=True)
+                """, unsafe_allow_html=True)
 
-            # The Metadata Slider
-            st.markdown('<div class="meta-slider">', unsafe_allow_html=True)
-            
-            # Prioritized Fields first
-            priority = ['signal', 'signal_60d', 's_hybrid', 's_structural', 'risk_score', 'final_weight', 'kelly_fraction']
-            
-            for k in priority:
-                if k in data:
-                    v = f"{data[k]:.4f}" if isinstance(data[k], float) else str(data[k])
-                    st.markdown(f'<div class="meta-row"><span class="meta-key">{k}</span><span class="meta-val">{v}</span></div>', unsafe_allow_html=True)
-            
-            st.markdown("<div style='margin: 15px 0 5px 0; font-size:0.7rem; color:#9AA0A6;'>FULL RAW METADATA</div>", unsafe_allow_html=True)
-            
-            # Remaining Database Fields
-            for k, v in data.items():
-                if k not in priority and k not in ['date_str', 'tradedate', 'symbol']:
+                # 2. Meta Slider Window
+                st.markdown('<div class="inspector-window">', unsafe_allow_html=True)
+                st.markdown("<strong>Technical Metadata</strong>", unsafe_allow_html=True)
+                
+                st.markdown('<div class="meta-scroll">', unsafe_allow_html=True)
+                # Show all 40+ fields dynamically
+                for k, v in data.items():
+                    if k in ['date_str', 'tradedate', 'symbol']: continue
+                    
+                    # Formatting values
                     v_str = f"{v:.4f}" if isinstance(v, float) else str(v)
-                    st.markdown(f'<div class="meta-row"><span class="meta-key">{k}</span><span class="meta-val">{v_str}</span></div>', unsafe_allow_html=True)
-            
-            st.markdown('</div>', unsafe_allow_html=True)
-        else:
-            st.info("Select a ticker to view instructions and scrollable metadata.")
+                    
+                    st.markdown(f"""
+                        <div class="meta-row">
+                            <span class="meta-label">{k.replace('_', ' ')}</span>
+                            <span class="meta-val">{v_str}</span>
+                        </div>
+                    """, unsafe_allow_html=True)
+                st.markdown('</div></div>', unsafe_allow_html=True)
+            else:
+                st.info("👆 Select a row in the matrix to load metadata.")
