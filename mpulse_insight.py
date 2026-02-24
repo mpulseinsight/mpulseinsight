@@ -4,57 +4,55 @@ import psycopg2
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, JsCode
 
 # 1. Page Configuration
-st.set_page_config(page_title="mPulse Pro", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="mPulse Intelligence", layout="wide", initial_sidebar_state="expanded")
 
-# 2. Google-Standard UI Styling
+# 2. Refined CSS (Theme-Agnostic & High Contrast)
 st.markdown("""
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
-        html, body, [class*="css"] { font-family: 'Roboto', sans-serif; background-color: #F8F9FA; }
-        
-        /* Compact Top Bar */
+        /* Compact Header Bar */
         .hero-banner {
             background-color: #ffffff;
             border-bottom: 1px solid #DADCE0;
-            padding: 10px 25px;
+            padding: 8px 20px;
             margin: -3rem -5rem 1rem -5rem;
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
-        .hero-title { font-size: 1.2rem; font-weight: 500; color: #202124; margin: 0; }
-        .hero-stats { font-size: 0.9rem; color: #5F6368; margin: 0; }
+        
+        /* Fixed Instruction Box - High Contrast */
+        .instruction-card {
+            background-color: #E8F0FE; /* Light Blue BG */
+            border-left: 5px solid #1A73E8;
+            padding: 12px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            color: #202124 !important; /* Force Dark Text */
+        }
+        .instruction-label { font-size: 0.75rem; font-weight: 700; color: #1A73E8; margin-bottom: 2px; }
+        .instruction-value { font-size: 1.1rem; font-weight: 700; color: #174EA6; }
 
-        /* Vertical Side Slider (Inspector) */
-        .inspector-container {
+        /* Vertical Meta-Slider (Right Side) */
+        .meta-slider {
             background-color: #ffffff;
             border: 1px solid #DADCE0;
             border-radius: 8px;
-            padding: 16px;
-            height: 75vh;
-            overflow-y: auto;
+            height: 70vh;
+            overflow-y: scroll;
+            padding: 10px;
         }
-        .field-row {
+        .meta-row {
             display: flex;
             justify-content: space-between;
-            padding: 8px 0;
+            padding: 6px 0;
             border-bottom: 1px solid #F1F3F4;
         }
-        .field-label { color: #5F6368; font-size: 0.8rem; text-transform: uppercase; font-weight: 600; }
-        .field-value { color: #202124; font-weight: 500; font-size: 0.9rem; text-align: right; }
-        
-        /* Strategy Badge */
-        .strategy-card {
-            background-color: #E8F0FE;
-            padding: 12px;
-            border-radius: 8px;
-            border-left: 4px solid #1A73E8;
-            margin-bottom: 15px;
-        }
+        .meta-key { color: #5F6368; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }
+        .meta-val { color: #202124; font-size: 0.85rem; font-weight: 500; font-family: monospace; }
     </style>
 """, unsafe_allow_html=True)
 
-# 3. Data Engine
+# 3. Data Loading
 @st.cache_data(ttl=60)
 def load_data():
     try:
@@ -66,56 +64,51 @@ def load_data():
         if not df.empty:
             df['date_str'] = pd.to_datetime(df['tradedate']).dt.strftime('%Y-%m-%d')
         return df
-    except Exception as e:
-        st.error(f"Error: {e}")
-        return pd.DataFrame()
+    except: return pd.DataFrame()
 
 raw_df = load_data()
 
-# 4. Top Hero Bar (Compact)
+# 4. Compact Top Bar
 if not raw_df.empty:
-    latest_row = raw_df.iloc[0]
+    top = raw_df.iloc[0]
     st.markdown(f"""
         <div class="hero-banner">
-            <p class="hero-title">Signal Intelligence</p>
-            <p class="hero-stats">
-                Market State: <span style="color:#1A73E8; font-weight:bold;">{latest_row['final_regime']}</span> | 
-                VIX: <span style="color:#202124; font-weight:bold;">{latest_row['vix']:.2f}</span>
-            </p>
+            <span style="font-size:1.1rem; font-weight:500;">Signal Intelligence</span>
+            <span style="font-size:0.9rem; color:#5F6368;">
+                State: <b style="color:#1A73E8;">{top['final_regime']}</b> | 
+                VIX: <b style="color:#202124;">{top['vix']:.2f}</b>
+            </span>
         </div>
     """, unsafe_allow_html=True)
 
 # 5. Sidebar Navigation
 with st.sidebar:
-    st.markdown("### Grid Perspective")
-    perspective = st.radio("Primary Focus", ["Daily Signals", "60-Day Signals"], index=0)
+    st.header("Settings")
+    view_type = st.radio("Signal Perspective", ["Daily Perspective", "60-Day Perspective"])
     st.markdown("---")
-    ticker_search = st.text_input("🔍 Filter Ticker").upper()
-    sector_search = st.selectbox("📂 Sector", ["All"] + sorted(raw_df['sector'].unique().tolist()))
+    ticker_input = st.text_input("🔍 Search Ticker").upper()
 
-# 6. Main Dashboard Split
-col_main, col_side = st.columns([2.3, 0.7])
+# 6. Main Content Split
+col_left, col_right = st.columns([2.2, 0.8])
 
 if not raw_df.empty:
-    # Filter Logic
-    df_f = raw_df.copy()
-    if ticker_search: df_f = df_f[df_f['symbol'].str.contains(ticker_search)]
-    if sector_search != "All": df_f = df_f[df_f['sector'] == sector_search]
-
-    # Map the Grid Pivot based on Perspective
-    target_signal = 'signal' if perspective == "Daily Signals" else 'signal_60d'
-    recent_dates = sorted(df_f['date_str'].unique(), reverse=True)[:5]
+    # Filtering
+    f_df = raw_df.copy()
+    if ticker_input: f_df = f_df[f_df['symbol'].str.contains(ticker_input)]
     
-    pivot = df_f.pivot_table(index=['symbol', 'sector'], columns='date_str', 
-                             values=target_signal, aggfunc='first').reset_index()
+    # Pivot Logic
+    sig_field = 'signal' if view_type == "Daily Perspective" else 'signal_60d'
+    recent_dates = sorted(f_df['date_str'].unique(), reverse=True)[:5]
+    pivot = f_df.pivot_table(index=['symbol', 'sector'], columns='date_str', 
+                             values=sig_field, aggfunc='first').reset_index()
 
-    with col_main:
+    with col_left:
         gb = GridOptionsBuilder.from_dataframe(pivot)
-        gb.configure_column("symbol", pinned="left", headerName="Ticker", width=100)
+        gb.configure_column("symbol", pinned="left", width=100)
         gb.configure_selection(selection_mode="single")
         
-        # Professional Cell Coloring
-        js_style = JsCode("""
+        # Color Logic
+        js_color = JsCode("""
         function(params) {
             if (!params.value) return {};
             const v = params.value.toUpperCase();
@@ -124,57 +117,51 @@ if not raw_df.empty:
             return {color: '#5F6368'};
         }
         """)
-        for d in recent_dates:
-            gb.configure_column(d, cellStyle=js_style, width=140)
+        for d in recent_dates: gb.configure_column(d, cellStyle=js_color, width=140)
 
-        grid_out = AgGrid(pivot, gridOptions=gb.build(), height=650, theme="balham", 
-                          allow_unsafe_jscode=True, update_mode=GridUpdateMode.SELECTION_CHANGED)
+        grid_resp = AgGrid(pivot, gridOptions=gb.build(), height=600, theme="balham", 
+                           allow_unsafe_jscode=True, update_mode=GridUpdateMode.SELECTION_CHANGED)
 
-    # 7. Vertical Sidebar Slider (Asset Inspector)
-    with col_side:
+    # 7. THE RIGHT SIDE SLIDER (Meta-Inspector)
+    with col_right:
         st.markdown("### Asset Inspector")
-        # Direct lookup to ensure syncing across perspectives
-        sel = grid_out.get('selected_rows')
+        selection = grid_resp.get('selected_rows')
         
-        if sel is not None and len(sel) > 0:
-            # Handle both list and dataframe formats from AgGrid
-            selected_ticker = (sel.iloc[0] if isinstance(sel, pd.DataFrame) else sel[0])['symbol']
-            
-            # Fetch the specific row for this ticker
-            ticker_data = raw_df[raw_df['symbol'] == selected_ticker].iloc[0]
-            
-            # Strategy Instruction Card
+        if selection is not None and len(selection) > 0:
+            # Sync selection across Daily/60D views
+            sel_ticker = (selection.iloc[0] if isinstance(selection, pd.DataFrame) else selection[0])['symbol']
+            data = raw_df[raw_df['symbol'] == sel_ticker].iloc[0]
+
+            # Clear, Readable Instruction Card
             st.markdown(f"""
-                <div class="strategy-card">
-                    <small>INSTRUCTION</small><br>
-                    <b style="font-size:1.1rem; color:#174EA6;">{ticker_data['suggested_action']}</b><br>
-                    <p style="font-size:0.8rem; color:#3C4043; margin-top:4px;">
-                        {ticker_data['execution_stance']} aligned with {perspective}.
-                    </p>
+                <div class="instruction-card">
+                    <div class="instruction-label">ACTIONABLE INSTRUCTION</div>
+                    <div class="instruction-value">{data['suggested_action']}</div>
+                    <div style="font-size:0.8rem; margin-top:5px; opacity:0.8;">
+                        {data['execution_stance']} • {view_type}
+                    </div>
                 </div>
             """, unsafe_allow_html=True)
 
-            # Vertical Slider (Field List)
-            st.markdown('<div class="inspector-container">', unsafe_allow_html=True)
+            # The Metadata Slider
+            st.markdown('<div class="meta-slider">', unsafe_allow_html=True)
             
-            # Grouping fields for better readability
-            important_fields = ['signal', 'signal_60d', 's_hybrid', 's_structural', 'final_weight', 'kelly_fraction', 'beta', 'risk_score', 'smart_money_score', 'f_score', 'vix']
+            # Prioritized Fields first
+            priority = ['signal', 'signal_60d', 's_hybrid', 's_structural', 'risk_score', 'final_weight', 'kelly_fraction']
             
-            # Display important ones first
-            for field in important_fields:
-                if field in ticker_data:
-                    val = ticker_data[field]
-                    # Format numbers
-                    disp = f"{val:.2%}" if "weight" in field else f"{val:.4f}" if isinstance(val, float) else str(val)
-                    st.markdown(f"""<div class="field-row"><span class="field-label">{field}</span><span class="field-value">{disp}</span></div>""", unsafe_allow_html=True)
+            for k in priority:
+                if k in data:
+                    v = f"{data[k]:.4f}" if isinstance(data[k], float) else str(data[k])
+                    st.markdown(f'<div class="meta-row"><span class="meta-key">{k}</span><span class="meta-val">{v}</span></div>', unsafe_allow_html=True)
             
-            st.markdown("<br><small>ALL DATA POINTS</small>", unsafe_allow_html=True)
-            # Display remaining fields
-            for field, val in ticker_data.items():
-                if field not in important_fields and field not in ['date_str', 'tradedate']:
-                    disp = f"{val:.4f}" if isinstance(val, float) else str(val)
-                    st.markdown(f"""<div class="field-row"><span class="field-label">{field}</span><span class="field-value">{disp}</span></div>""", unsafe_allow_html=True)
+            st.markdown("<div style='margin: 15px 0 5px 0; font-size:0.7rem; color:#9AA0A6;'>FULL RAW METADATA</div>", unsafe_allow_html=True)
+            
+            # Remaining Database Fields
+            for k, v in data.items():
+                if k not in priority and k not in ['date_str', 'tradedate', 'symbol']:
+                    v_str = f"{v:.4f}" if isinstance(v, float) else str(v)
+                    st.markdown(f'<div class="meta-row"><span class="meta-key">{k}</span><span class="meta-val">{v_str}</span></div>', unsafe_allow_html=True)
             
             st.markdown('</div>', unsafe_allow_html=True)
         else:
-            st.info("Select a ticker in the matrix to inspect all technical fields.")
+            st.info("Select a ticker to view instructions and scrollable metadata.")
