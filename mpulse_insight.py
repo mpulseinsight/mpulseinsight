@@ -1,6 +1,14 @@
-# 4. Data Engine
+import streamlit as st  # <--- This must be the first line
+import pandas as pd
+import psycopg2
+from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, JsCode
 
-# REMOVED @st.cache_resource to prevent holding "dead" connections
+# 1. Page Configuration (Must come before any other st. commands)
+st.set_page_config(page_title="mPulse Pro v3.1", layout="wide", initial_sidebar_state="expanded")
+
+# ... (CSS Section 2 and Sidebar Section 3 go here) ...
+
+# 4. Data Engine (Ensure this is AFTER imports and Page Config)
 def get_db_connection():
     try:
         creds = st.secrets["postgres"]
@@ -19,13 +27,11 @@ def load_data():
         return pd.DataFrame(), pd.DataFrame()
     
     try:
-        # Fetch the data using the fresh connection
         df = pd.read_sql("SELECT * FROM mpulse_execution_results ORDER BY asatdate ASC", conn)
     except Exception as e:
         st.error(f"Query Error: {e}")
         return pd.DataFrame(), pd.DataFrame()
     finally:
-        # Crucial: Always close the connection after the query finishes to prevent memory/connection leaks
         conn.close()
         
     if df.empty:
@@ -33,9 +39,14 @@ def load_data():
 
     df['date_str'] = df['asatdate'].astype(str)
     
-    # Pivot to show 'execution_stance' instead of just signal for the top-level view
-    pivot = df.pivot_table(index=['symbol', 'sector'], columns='date_str', values='execution_stance', aggfunc='first').reset_index().fillna('')
+    # Check if execution_stance exists in your DB, fallback to signal if not
+    pivot_col = 'execution_stance' if 'execution_stance' in df.columns else 'signal'
+    
+    pivot = df.pivot_table(index=['symbol', 'sector'], columns='date_str', values=pivot_col, aggfunc='first').reset_index().fillna('')
     cols = [c for c in pivot.columns if c not in ['symbol', 'sector']]
     recent = sorted(cols, reverse=True)[:5]
     
     return df, pivot[['symbol', 'sector'] + sorted(recent)]
+
+# Now call the function
+raw_df, pivot_5_df = load_data()
