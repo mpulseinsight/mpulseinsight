@@ -4,58 +4,39 @@ import psycopg2
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, JsCode
 
 # 1. Page Configuration
-st.set_page_config(page_title="mPulse Intelligence", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="mPulse Console", layout="wide", initial_sidebar_state="expanded")
 
-# 2. CSS for the "Logic Header"
+# 2. Enhanced UI Styling
 st.markdown("""
     <style>
-        .instruction-box {
-            background-color: #f0f7ff;
-            border-left: 5px solid #1a73e8;
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 10px;
+        .main { background-color: #f4f7f9; }
+        .stMetric { background-color: #ffffff; padding: 10px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .audit-panel {
+            background-color: #ffffff;
+            padding: 20px;
+            border-left: 2px solid #e0e0e0;
+            height: 80vh;
+            overflow-y: auto;
         }
-        .reason-text {
-            color: #5F6368;
-            font-size: 13px;
-            font-style: italic;
-            margin-top: 5px;
-            display: block;
+        .instruction-banner {
+            background-color: #1a73e8;
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
         }
     </style>
 """, unsafe_allow_html=True)
 
-# 3. Dynamic Logic Explainer
-def get_logic_reason(signal, instruction, regime, structural_sig):
-    if signal == "BULLISH" and instruction == "STAY CASH":
-        if regime in ["VOLATILE", "BEARISH"]:
-            return "⚠️ MARKET OVERRIDE: Individual stock looks good, but the overall Market Regime is too dangerous for new longs."
-        if structural_sig == "BEARISH":
-            return "⚠️ TREND MISMATCH: Daily momentum is up, but the 60-Day structural trend is still down (Bull Trap Risk)."
-        return "⚠️ RISK LIMIT: High volatility or low confidence scores triggered a safety override."
-    return "✅ ALIGNED: Signal and Instruction are in sync with current risk parameters."
+# 3. Logic Engine for Signals
+def explain_logic(sig, inst, regime):
+    if sig == "BULLISH" and inst == "STAY CASH":
+        return f"🚨 **Risk Override:** Market is {regime}. Safety protocols prevent buying despite bullish momentum."
+    if sig == "BEARISH" and inst == "STAY CASH":
+        return "📉 **Alignment:** Trend is negative; capital is protected in cash."
+    return f"⚡ **Active Mode:** {inst} order recommended based on {sig} signal."
 
-# 4. Popups
-@st.dialog("Complete Technical Audit & Dictionary", width="large")
-def show_full_audit(ticker, raw_data):
-    d = raw_data[raw_data['symbol'] == ticker].sort_values('tradedate', ascending=False).iloc[0]
-    st.subheader(f"Technical DNA: {ticker}")
-    
-    tab1, tab2 = st.tabs(["📊 Current Values", "📖 Field Definitions"])
-    with tab1:
-        cols = st.columns(3)
-        for i, (col, val) in enumerate(d.items()):
-            if col in ['grid_display', 'cell_val', 'date_str']: continue
-            with cols[i % 3]:
-                st.write(f"**{col}**")
-                st.code(val)
-    with tab2:
-        st.write("**s_hybrid:** Daily Pulse Score (0-1)")
-        st.write("**s_structural:** 60-Day Strength Score (0-1)")
-        st.write("**kelly_fraction:** Math-based confidence sizing.")
-
-# 5. Data Engine
+# 4. Data Loading
 @st.cache_data(ttl=60)
 def load_data():
     try:
@@ -64,91 +45,94 @@ def load_data():
                                 user=creds["user"], password=creds["password"], sslmode="require")
         df = pd.read_sql("SELECT * FROM mpulse_execution_results ORDER BY tradedate ASC", conn)
         conn.close()
-        
         if not df.empty:
-            # CREATE PIVOT COLUMNS IMMEDIATELY ON LOAD
             df['date_str'] = df['tradedate'].astype(str)
-            df['cell_val'] = df.apply(lambda r: f"{r['signal']} | 🛡️ {r['signal_60d']}", axis=1)
         return df
     except Exception as e:
-        st.error(f"Database Error: {e}")
+        st.error(f"DB Error: {e}")
         return pd.DataFrame()
 
-# --- LOAD DATA ---
 raw_df = load_data()
 
-# 6. Sidebar & Filters
+# 5. Sidebar: Perspective & Filters
 with st.sidebar:
-    st.title("Filters")
-    search_query = st.text_input("🔍 Search Ticker").upper()
-    sector_list = ["All"] + (sorted(raw_df['sector'].unique().tolist()) if not raw_df.empty else [])
-    sel_sector = st.selectbox("Industry", sector_list)
+    st.title("🎯 Console Controls")
+    perspective = st.radio(
+        "Display Perspective",
+        ["Daily Signal", "60-Day Signal", "Combined View"],
+        index=0  # Default to Daily as requested
+    )
+    st.markdown("---")
+    search_ticker = st.text_input("🔍 Search Symbol").upper()
+    industry = st.selectbox("📂 Industry", ["All"] + sorted(raw_df['sector'].unique().tolist()) if not raw_df.empty else [])
 
-# 7. Header Logic (Above the Grid)
-header_placeholder = st.empty()
+# 6. The Meaningful Top Bar
+if not raw_df.empty:
+    latest = raw_df.iloc[-1]
+    t1, t2, t3, t4 = st.columns([1.5, 1, 1, 1])
+    with t1:
+        st.markdown(f"""<div class='instruction-banner'>
+            <small>MARKET ENVIRONMENT</small><br>
+            <strong>{latest['final_regime']} ({latest['trend_regime']})</strong>
+        </div>""", unsafe_allow_html=True)
+    t2.metric("Market Vol (VIX)", f"{latest['vix']:.2f}")
+    t3.metric("S&P 200DMA", f"{latest['spx_200dma']:,.0f}")
+    t4.metric("Risk Status", "RESTRICTED" if latest['vix'] > 25 else "OPERATIONAL")
+
+# 7. Main Interface Split (Grid + Vertical Audit Slider)
+col_grid, col_audit = st.columns([2.2, 0.8])
 
 if not raw_df.empty:
-    # APPLY FILTERS
-    grid_data = raw_df.copy()
-    if search_query:
-        grid_data = grid_data[grid_data['symbol'].str.contains(search_query)]
-    if sel_sector != "All":
-        grid_data = grid_data[grid_data['sector'] == sel_sector]
+    # Filter Data
+    grid_df = raw_df.copy()
+    if search_ticker: grid_df = grid_df[grid_df['symbol'].str.contains(search_ticker)]
+    if industry != "All": grid_df = grid_df[grid_df['sector'] == industry]
 
-    # 8. Matrix Rendering with Error Catching
-    if not grid_data.empty:
-        try:
-            recent_dates = sorted(raw_df['date_str'].unique().tolist(), reverse=True)[:5]
-            # Ensure index and columns actually exist in grid_data before pivoting
-            pivot = grid_data.pivot_table(
-                index=['symbol', 'sector'], 
-                columns='date_str', 
-                values='cell_val', 
-                aggfunc='first'
-            ).reset_index()
+    # Map signals based on sidebar choice
+    def map_sig(r):
+        if perspective == "Daily Signal": return r['signal']
+        if perspective == "60-Day Signal": return f"🛡️ {r['signal_60d']}"
+        return f"{r['signal']} | {r['signal_60d']}"
 
-            # Ensure all 5 dates are present in pivot (if they exist in filtered data)
-            available_dates = [d for d in recent_dates if d in pivot.columns]
+    grid_df['display_val'] = grid_df.apply(map_sig, axis=1)
+    
+    # Create Pivot
+    recent_dates = sorted(raw_df['date_str'].unique().tolist(), reverse=True)[:5]
+    pivot = grid_df.pivot_table(index=['symbol', 'sector'], columns='date_str', values='display_val', aggfunc='first').reset_index()
+    
+    with col_grid:
+        gb = GridOptionsBuilder.from_dataframe(pivot)
+        gb.configure_column("symbol", pinned="left", width=90)
+        gb.configure_selection(selection_mode="single")
+        for d_col in recent_dates:
+            gb.configure_column(d_col, width=160)
+        
+        st.markdown("### Execution Matrix")
+        grid_out = AgGrid(pivot, gridOptions=gb.build(), height=500, theme="alpine", update_mode=GridUpdateMode.SELECTION_CHANGED)
 
-            gb = GridOptionsBuilder.from_dataframe(pivot[['symbol', 'sector'] + available_dates])
-            gb.configure_column("symbol", pinned="left", width=100)
-            gb.configure_selection(selection_mode="single")
-            for d_col in available_dates:
-                gb.configure_column(d_col, width=200)
-
-            st.markdown("### Market Matrix")
-            grid_out = AgGrid(pivot, gridOptions=gb.build(), height=400, theme="alpine", update_mode=GridUpdateMode.SELECTION_CHANGED)
-
-            # 9. Dynamic Header Update
-            sel = grid_out.get('selected_rows')
-            if sel is not None and (isinstance(sel, pd.DataFrame) and not sel.empty or len(sel) > 0):
-                selected_ticker = (sel.iloc[0] if isinstance(sel, pd.DataFrame) else sel[0])['symbol']
-                d = raw_df[raw_df['symbol'] == selected_ticker].sort_values('tradedate', ascending=False).iloc[0]
-                
-                reason = get_logic_reason(d['signal'], d['suggested_action'], d['final_regime'], d['signal_60d'])
-                
-                with header_placeholder.container():
-                    c1, c2, c3 = st.columns([1.5, 2, 1])
-                    with c1:
-                        st.markdown(f"## {selected_ticker}")
-                        st.button("🔬 Audit All Fields", on_click=show_full_audit, args=(selected_ticker, raw_df))
-                    with c2:
-                        st.markdown(f"""
-                            <div class="instruction-box">
-                                <strong>INSTRUCTION:</strong> {d['suggested_action']}<br>
-                                <span class="reason-text">{reason}</span>
-                            </div>
-                        """, unsafe_allow_html=True)
-                    with c3:
-                        st.metric("Pulse Score", f"{d['s_hybrid']:.2f}")
-                        st.metric("Structure", f"{d.get('s_structural', 0):.2f}")
-                    st.markdown("---")
-            else:
-                header_placeholder.info("💡 Select a ticker in the matrix below to view instructions and audit details.")
-
-        except KeyError as e:
-            st.error(f"Filtering Error: The selected filter removed required data columns ({e}). Try a different search.")
-    else:
-        st.warning("No tickers found matching your search criteria.")
-else:
-    st.error("Wait... No data found in the database. Please check your ingestion pipeline.")
+    # 8. Vertical Audit Slider (Side Panel)
+    with col_audit:
+        st.markdown("### 🔬 Technical Audit")
+        sel = grid_out.get('selected_rows')
+        if sel is not None and len(sel) > 0:
+            ticker = (sel.iloc[0] if isinstance(sel, pd.DataFrame) else sel[0])['symbol']
+            d = raw_df[raw_df['symbol'] == ticker].sort_values('tradedate', ascending=False).iloc[0]
+            
+            # Logic Explanation Header
+            st.markdown(f"**{ticker} Logic:**")
+            st.info(explain_logic(d['signal'], d['suggested_action'], d['final_regime']))
+            
+            # The "Vertical Slider" style list
+            st.markdown("<div class='audit-panel'>", unsafe_allow_html=True)
+            audit_data = d.drop(['grid_display', 'display_val', 'date_str', 'cell_val'], errors='ignore')
+            
+            # Displaying as a vertical grid (Field Name | Value)
+            for col_name in audit_data.index:
+                val = audit_data[col_name]
+                disp_val = f"{val:.4f}" if isinstance(val, float) else str(val)
+                st.markdown(f"**{col_name}**")
+                st.code(disp_val)
+                st.markdown("---")
+            st.markdown("</div>", unsafe_allow_html=True)
+        else:
+            st.caption("Select a ticker to analyze all 40+ technical fields vertically.")
