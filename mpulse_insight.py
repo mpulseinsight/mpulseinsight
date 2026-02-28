@@ -1,185 +1,162 @@
 import streamlit as st
 import pandas as pd
 import psycopg2
+import plotly.graph_objects as go
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, JsCode
 
 # 1. Page Configuration
-st.set_page_config(page_title="mPulse Pro Console", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="mPulse Pro Terminal", layout="wide")
 
-# 2. Professional Terminal CSS
+# 2. Modern Terminal CSS (Cleaner for 2026)
 st.markdown("""
     <style>
-        .stApp { background-color: #f8f9fa; }
-        header { visibility: hidden; }
-        
-        /* Command Header */
-        .terminal-header {
-            background: #1a73e8;
-            color: white;
+        .main { background-color: #0e1117; color: #fafafa; }
+        div[data-testid="stMetricValue"] { font-size: 1.8rem; color: #00d4ff; }
+        .status-card {
+            background: #161b22;
+            border-radius: 10px;
             padding: 1.5rem;
-            margin: -3rem -5rem 1.5rem -5rem;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            border-left: 5px solid #00d4ff;
+            margin-bottom: 1rem;
         }
-
-        /* Intelligence Card */
-        .intel-card {
-            background: white;
-            border: 1px solid #dadce0;
-            border-radius: 8px;
-            padding: 20px;
-            margin-top: 15px;
+        .advice-box {
+            background: #1c2128;
+            padding: 15px;
+            border-radius: 5px;
+            border: 1px solid #30363d;
         }
-
-        /* Metric Blocks */
-        .metric-box {
-            border-bottom: 3px solid #1a73e8;
-            background: #f1f3f4;
-            padding: 12px;
-            border-radius: 4px;
-            text-align: center;
-        }
-        .metric-label { font-size: 0.7rem; font-weight: 700; color: #5f6368; text-transform: uppercase; }
-        .metric-value { font-size: 1.2rem; font-weight: 600; color: #202124; }
     </style>
 """, unsafe_allow_html=True)
 
-# 3. Robust Data Engine
+# 3. Enhanced Data Engine
 @st.cache_data(ttl=60)
-def load_and_process_data():
+def load_market_data():
     try:
+        # Use st.connection for more stable PostgreSQL pooling in 2026
         creds = st.secrets["postgres"]
         conn = psycopg2.connect(
             host=creds["host"], port=creds["port"], database=creds["database"], 
             user=creds["user"], password=creds["password"], sslmode="require"
         )
-        df = pd.read_sql("SELECT * FROM mpulse_execution_results", conn)
+        query = "SELECT * FROM mpulse_execution_results ORDER BY tradedate DESC"
+        df = pd.read_sql(query, conn)
         conn.close()
         
-        if df.empty: return pd.DataFrame()
-
-        # Clean column names to lowercase to avoid KeyErrors
         df.columns = [c.lower() for c in df.columns]
-        
         if 'tradedate' in df.columns:
             df['tradedate'] = pd.to_datetime(df['tradedate'])
             df['date_str'] = df['tradedate'].dt.strftime('%Y-%m-%d')
-        
-        # Ranking Logic
-        rank_map = {'BUY': 5, 'BULLISH': 4, 'HOLD': 3, 'BEARISH': 2, 'SELL': 1}
-        if 'signal' in df.columns:
-            df['rank_score'] = df['signal'].fillna('').str.upper().apply(
-                lambda x: next((v for k, v in rank_map.items() if k in x), 0)
-            )
         return df
     except Exception as e:
-        st.error(f"Database Error: {e}")
+        st.error(f"⚠️ Connection Failed: {e}")
         return pd.DataFrame()
 
-raw_df = load_and_process_data()
+df = load_market_data()
 
-# 4. Sidebar (Left Slider)
+# --- SIDEBAR & FILTERING ---
 with st.sidebar:
-    st.title("mPulse Pro")
-    st.markdown("---")
-    search_query = st.text_input("🔍 Search Asset", "").upper()
-    st.divider()
-    st.caption("v3.2.0 Operating System")
+    st.header("🎛️ Command Controls")
+    search = st.text_input("Search Ticker (e.g. NVDA, BTC)", "").upper()
+    lookback = st.slider("Signal Lookback (Days)", 5, 60, 15)
 
-# 5. Global Status Bar
-st.markdown('<div class="terminal-header"><h2>Market Intelligence Command Center</h2></div>', unsafe_allow_html=True)
+# --- MAIN DASHBOARD ---
+if not df.empty:
+    # 4. Global Market Pulse
+    latest_snap = df.iloc[0]
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Market Regime", latest_snap.get('final_regime', 'Neutral'))
+    m2.metric("VIX Volatility", f"{latest_snap.get('vix', 0):.2f}")
+    m3.metric("Trend Strength", "💪 Strong" if latest_snap.get('adx', 0) > 25 else "😴 Sideways")
+    m4.metric("Data Freshness", latest_snap['date_str'])
 
-if not raw_df.empty:
-    latest_global = raw_df.sort_values('tradedate', ascending=False).iloc[0]
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Regime", latest_global.get('final_regime', 'N/A'))
-    c2.metric("VIX", f"{latest_global.get('vix', 0):.2f}")
-    c3.metric("Assets Tracked", len(raw_df['symbol'].unique()))
+    # 5. The Insight Matrix
+    st.subheader("📡 Recent Signal Matrix")
+    recent_dates = sorted(df['date_str'].unique(), reverse=True)[:lookback]
+    matrix_df = df[df['date_str'].isin(recent_dates)].copy()
+    
+    if search:
+        matrix_df = matrix_df[matrix_df['symbol'].str.contains(search)]
 
-# 6. Main Matrix (Last 5 Days)
-if not raw_df.empty:
-    recent_dates = sorted(raw_df['date_str'].unique(), reverse=True)[:5]
-    latest_date = recent_dates[0]
-    
-    f_df = raw_df[raw_df['date_str'].isin(recent_dates)].copy()
-    if search_query:
-        f_df = f_df[f_df['symbol'].str.contains(search_query)]
-    
-    pivot = f_df.pivot_table(index=['symbol', 'sector'], columns='date_str', values='signal', aggfunc='first').reset_index()
-    
-    # Re-merge rank for sorting
-    latest_ranks = f_df[f_df['date_str'] == latest_date][['symbol', 'rank_score']].drop_duplicates('symbol')
-    pivot = pivot.merge(latest_ranks, on='symbol', how='left').sort_values(by='rank_score', ascending=False)
+    # Pivot for a "Heatmap" view
+    pivot = matrix_df.pivot_table(
+        index=['symbol', 'sector'], 
+        columns='date_str', 
+        values='signal', 
+        aggfunc='first'
+    ).reset_index().fillna("-")
 
-    gb = GridOptionsBuilder.from_dataframe(pivot.drop(columns=['rank_score'], errors='ignore'))
-    gb.configure_column("symbol", pinned="left", headerName="Ticker")
-    gb.configure_selection(selection_mode="single")
+    # Configure Grid
+    gb = GridOptionsBuilder.from_dataframe(pivot)
+    gb.configure_selection('single', use_checkbox=True)
+    gb.configure_side_bar()
+    gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=10)
     
-    js_color = JsCode("""
+    # Simple color coding for "Common Man" clarity
+    cells_js = JsCode("""
     function(params) {
-        if (!params.value) return {color: '#bdc3c7'};
-        const v = params.value.toUpperCase();
-        if (v.includes('BUY')) return {backgroundColor: '#e6f4ea', color: '#137333', fontWeight: 'bold'};
-        if (v.includes('SELL')) return {backgroundColor: '#fce8e6', color: '#c5221f', fontWeight: 'bold'};
-        return {color: '#5f6368'};
+        if (params.value === 'BUY' || params.value.includes('BULL')) return {'color': 'white', 'backgroundColor': '#008000'};
+        if (params.value === 'SELL' || params.value.includes('BEAR')) return {'color': 'white', 'backgroundColor': '#d32f2f'};
+        return {'color': '#888'};
     }
     """)
-    for d in recent_dates: gb.configure_column(d, cellStyle=js_color)
+    for col in recent_dates:
+        gb.configure_column(col, cellStyle=cells_js)
 
-    grid_resp = AgGrid(pivot, gridOptions=gb.build(), height=350, theme="balham", allow_unsafe_jscode=True)
+    grid_data = AgGrid(
+        pivot, 
+        gridOptions=gb.build(), 
+        update_mode=GridUpdateMode.SELECTION_CHANGED,
+        allow_unsafe_jscode=True,
+        theme='alpine'
+    )
 
-# 7. Intelligence Hub (Meaningful Info)
-selection = grid_resp.get('selected_rows')
-selected_row = None
-if selection is not None:
-    if isinstance(selection, pd.DataFrame) and not selection.empty: selected_row = selection.iloc[0]
-    elif isinstance(selection, list) and len(selection) > 0: selected_row = selection[0]
-
-if selected_row is not None:
-    ticker = selected_row['symbol']
-    # Filter history and drop completely empty columns to find "Meaningful" data
-    ticker_history = raw_df[raw_df['symbol'] == ticker].sort_values('tradedate', ascending=False)
+    # 6. Deep Intelligence Hub
+    selected = grid_data['selected_rows']
     
-    # Dynamic column identification to prevent KeyErrors
-    available_cols = ticker_history.columns.tolist()
-    primary_factors = [f for f in ['zscore', 'rsi', 'atr', 'mfi', 'adx'] if f in available_cols]
-    
-    # Get the latest row that has at least SOME technical data
-    valid_data = ticker_history.dropna(subset=primary_factors, how='all').iloc[0] if not primary_factors == [] else ticker_history.iloc[0]
+    # Fix: AgGrid selection returns differently depending on version
+    if selected is not None and (isinstance(selected, list) and len(selected) > 0):
+        # Handle both list of dicts and DataFrame return types
+        s_row = selected[0] if isinstance(selected, list) else selected.iloc[0]
+        ticker = s_row['symbol']
+        
+        hist = df[df['symbol'] == ticker].head(60) # Last 60 days
+        current = hist.iloc[0]
 
-    st.markdown(f"### 🛡️ Analysis for {ticker}")
-    st.markdown('<div class="intel-card">', unsafe_allow_html=True)
-    
-    # MEANINGFUL ACTION LOGIC
-    sig = str(valid_data.get('signal', '')).upper()
-    raw_action = str(valid_data.get('suggested_action', 'WAIT')).upper()
-    
-    # If the theory is Bullish but action is "Stay Cash", explain it professionally
-    if ("BULL" in sig or "BUY" in sig) and ("CASH" in raw_action):
-        display_action = "MONITORING FOR ENTRY"
-        reasoning = "Technical strength is building (Bullish Signal). Execution is paused pending volume confirmation."
-    else:
-        display_action = raw_action if raw_action != 'NONE' else "OBSERVING"
-        reasoning = valid_data.get('execution_stance', 'Maintaining current baseline.')
+        st.divider()
+        st.header(f"🔍 Intelligence Report: {ticker}")
+        
+        c1, c2 = st.columns([1, 2])
+        
+        with c1:
+            st.markdown(f"### 💡 Directional Advice")
+            # Logic to simplify technicals for the "Common Man"
+            rsi = current.get('rsi', 50)
+            zscore = current.get('zscore', 0)
+            
+            if rsi > 70:
+                advice = "⚠️ **EXTREME CAUTION**: Asset is overbought. High risk of a pullback."
+            elif rsi < 30:
+                advice = "✅ **OPPORTUNITY**: Asset is oversold. Potential value entry."
+            elif zscore > 2:
+                advice = "📉 **MEAN REVERSION**: Price is too far above average. Expect a drop."
+            else:
+                advice = "⚖️ **STABLE**: Price is moving within normal ranges."
 
-    st.subheader(f"Strategy: {display_action}")
-    st.info(reasoning)
+            st.info(advice)
+            st.write(f"**Suggested Action:** {current.get('suggested_action', 'Hold')}")
+            st.write(f"**Sector Context:** {current.get('sector', 'N/A')}")
 
-    # Display Factors
-    cols = st.columns(len(primary_factors) if primary_factors else 1)
-    for i, factor in enumerate(primary_factors):
-        val = valid_data.get(factor)
-        with cols[i]:
-            st.markdown(f"""
-                <div class="metric-box">
-                    <div class="metric-label">{factor}</div>
-                    <div class="metric-value">{f"{val:.2f}" if isinstance(val, (int, float)) else val}</div>
-                </div>
-            """, unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+        with c2:
+            # 7. Visual Trend (60 Days)
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=hist['tradedate'], y=hist['rsi'], name="RSI (Momentum)"))
+            fig.add_trace(go.Scatter(x=hist['tradedate'], y=[70]*60, name="Overbought", line=dict(dash='dash', color='red')))
+            fig.add_trace(go.Scatter(x=hist['tradedate'], y=[30]*60, name="Oversold", line=dict(dash='dash', color='green')))
+            fig.update_layout(title=f"{ticker} 60-Day Momentum (RSI)", height=300, template="plotly_dark")
+            st.plotly_chart(fig, use_container_width=True)
 
-    with st.expander("📖 Dictionary & Factor Dictionary"):
-        st.write("**Z-Score:** Standard deviation from the mean. High = Overextended, Low = Undervalued.")
-        st.write("**RSI:** Momentum oscillator. <30 is oversold, >70 is overbought.")
-        st.json(valid_data.to_dict())
 else:
-    st.info("Select an asset from the matrix to load technical intelligence.")
+    st.warning("No data found in the `mpulse_execution_results` table.")
+
+st.markdown("---")
+st.caption("mPulse Intelligence Engine | Systems Nominal")
