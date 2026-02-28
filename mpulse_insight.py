@@ -7,7 +7,7 @@ from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, JsCode
 # 1. Page Configuration
 st.set_page_config(page_title="mPulse Pro Terminal", layout="wide")
 
-# 2. Modern Terminal CSS (Cleaner for 2026)
+# 2. Modern Terminal CSS
 st.markdown("""
     <style>
         .main { background-color: #0e1117; color: #fafafa; }
@@ -32,7 +32,7 @@ st.markdown("""
 @st.cache_data(ttl=60)
 def load_market_data():
     try:
-        # Use st.connection for more stable PostgreSQL pooling in 2026
+        # Connect to PostgreSQL using Streamlit secrets
         creds = st.secrets["postgres"]
         conn = psycopg2.connect(
             host=creds["host"], port=creds["port"], database=creds["database"], 
@@ -42,6 +42,7 @@ def load_market_data():
         df = pd.read_sql(query, conn)
         conn.close()
         
+        # Clean column names to prevent KeyErrors
         df.columns = [c.lower() for c in df.columns]
         if 'tradedate' in df.columns:
             df['tradedate'] = pd.to_datetime(df['tradedate'])
@@ -53,31 +54,32 @@ def load_market_data():
 
 df = load_market_data()
 
-# --- SIDEBAR & FILTERING ---
+# 4. Sidebar Controls
 with st.sidebar:
     st.header("🎛️ Command Controls")
     search = st.text_input("Search Ticker (e.g. NVDA, BTC)", "").upper()
     lookback = st.slider("Signal Lookback (Days)", 5, 60, 15)
 
-# --- MAIN DASHBOARD ---
+# 5. Main Dashboard Engine
 if not df.empty:
-    # 4. Global Market Pulse
+    # Global Market Pulse
     latest_snap = df.iloc[0]
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Market Regime", latest_snap.get('final_regime', 'Neutral'))
     m2.metric("VIX Volatility", f"{latest_snap.get('vix', 0):.2f}")
     m3.metric("Trend Strength", "💪 Strong" if latest_snap.get('adx', 0) > 25 else "😴 Sideways")
-    m4.metric("Data Freshness", latest_snap['date_str'])
+    m4.metric("Data Freshness", latest_snap.get('date_str', 'Unknown'))
 
-    # 5. The Insight Matrix
     st.subheader("📡 Recent Signal Matrix")
-    recent_dates = sorted(df['date_str'].unique(), reverse=True)[:lookback]
+    
+    # Filter for the matrix view
+    recent_dates = sorted(df['date_str'].dropna().unique(), reverse=True)[:lookback]
     matrix_df = df[df['date_str'].isin(recent_dates)].copy()
     
     if search:
         matrix_df = matrix_df[matrix_df['symbol'].str.contains(search)]
 
-    # Pivot for a "Heatmap" view
+    # Pivot for a clean Heatmap view
     pivot = matrix_df.pivot_table(
         index=['symbol', 'sector'], 
         columns='date_str', 
@@ -85,24 +87,27 @@ if not df.empty:
         aggfunc='first'
     ).reset_index().fillna("-")
 
-    # Configure Grid
+    # Configure the AgGrid interactive table
     gb = GridOptionsBuilder.from_dataframe(pivot)
     gb.configure_selection('single', use_checkbox=True)
     gb.configure_side_bar()
     gb.configure_pagination(paginationAutoPageSize=False, paginationPageSize=10)
     
-    # Simple color coding for "Common Man" clarity
+    # Color coding logic for common users
     cells_js = JsCode("""
     function(params) {
-        if (params.value === 'BUY' || params.value.includes('BULL')) return {'color': 'white', 'backgroundColor': '#008000'};
-        if (params.value === 'SELL' || params.value.includes('BEAR')) return {'color': 'white', 'backgroundColor': '#d32f2f'};
+        if (!params.value) return {'color': '#888'};
+        const v = params.value.toUpperCase();
+        if (v === 'BUY' || v.includes('BULL')) return {'color': 'white', 'backgroundColor': '#008000'};
+        if (v === 'SELL' || v.includes('BEAR')) return {'color': 'white', 'backgroundColor': '#d32f2f'};
         return {'color': '#888'};
     }
     """)
     for col in recent_dates:
         gb.configure_column(col, cellStyle=cells_js)
 
-    grid_data = AgGrid(
+    # Render the interactive grid
+    grid_response = AgGrid(
         pivot, 
         gridOptions=gb.build(), 
         update_mode=GridUpdateMode.SELECTION_CHANGED,
@@ -110,53 +115,73 @@ if not df.empty:
         theme='alpine'
     )
 
-    # 6. Deep Intelligence Hub
-    selected = grid_data['selected_rows']
+    # 6. Deep Intelligence Hub (Triggered on row click)
+    selected_data = grid_response.get('selected_rows')
     
-    # Fix: AgGrid selection returns differently depending on version
-    if selected is not None and (isinstance(selected, list) and len(selected) > 0):
-        # Handle both list of dicts and DataFrame return types
-        s_row = selected[0] if isinstance(selected, list) else selected.iloc[0]
-        ticker = s_row['symbol']
-        
-        hist = df[df['symbol'] == ticker].head(60) # Last 60 days
-        current = hist.iloc[0]
-
-        st.divider()
-        st.header(f"🔍 Intelligence Report: {ticker}")
-        
-        c1, c2 = st.columns([1, 2])
-        
-        with c1:
-            st.markdown(f"### 💡 Directional Advice")
-            # Logic to simplify technicals for the "Common Man"
-            rsi = current.get('rsi', 50)
-            zscore = current.get('zscore', 0)
+    # Robust selection handling for different st_aggrid versions
+    s_row = None
+    if selected_data is not None:
+        if isinstance(selected_data, pd.DataFrame) and not selected_data.empty:
+            s_row = selected_data.iloc[0]
+        elif isinstance(selected_data, list) and len(selected_data) > 0:
+            s_row = selected_data[0]
             
-            if rsi > 70:
-                advice = "⚠️ **EXTREME CAUTION**: Asset is overbought. High risk of a pullback."
-            elif rsi < 30:
-                advice = "✅ **OPPORTUNITY**: Asset is oversold. Potential value entry."
-            elif zscore > 2:
-                advice = "📉 **MEAN REVERSION**: Price is too far above average. Expect a drop."
-            else:
-                advice = "⚖️ **STABLE**: Price is moving within normal ranges."
+    if s_row is not None:
+        ticker = s_row.get('symbol')
+        
+        # Pull the 60-day history for the selected ticker
+        hist = df[df['symbol'] == ticker].sort_values('tradedate', ascending=False).head(60) 
+        
+        if not hist.empty:
+            current = hist.iloc[0]
 
-            st.info(advice)
-            st.write(f"**Suggested Action:** {current.get('suggested_action', 'Hold')}")
-            st.write(f"**Sector Context:** {current.get('sector', 'N/A')}")
+            st.divider()
+            st.header(f"🔍 Intelligence Report: {ticker}")
+            
+            c1, c2 = st.columns([1, 2])
+            
+            with c1:
+                st.markdown(f"### 💡 Directional Advice")
+                
+                # Logic to simplify technicals for the "Common Man"
+                rsi = current.get('rsi', 50)
+                zscore = current.get('zscore', 0)
+                
+                # Safely handle missing values if DB returns nulls
+                rsi = float(rsi) if pd.notna(rsi) else 50.0
+                zscore = float(zscore) if pd.notna(zscore) else 0.0
+                
+                if rsi > 70:
+                    advice = "⚠️ **EXTREME CAUTION**: Asset is overbought. High risk of a pullback."
+                elif rsi < 30:
+                    advice = "✅ **OPPORTUNITY**: Asset is oversold. Potential value entry."
+                elif zscore > 2:
+                    advice = "📉 **MEAN REVERSION**: Price is pushed too high above normal averages. Expect a drop."
+                elif zscore < -2:
+                    advice = "📈 **REBOUND POTENTIAL**: Price is severely depressed below normal averages."
+                else:
+                    advice = "⚖️ **STABLE**: Price is moving within normal expected ranges."
 
-        with c2:
-            # 7. Visual Trend (60 Days)
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=hist['tradedate'], y=hist['rsi'], name="RSI (Momentum)"))
-            fig.add_trace(go.Scatter(x=hist['tradedate'], y=[70]*60, name="Overbought", line=dict(dash='dash', color='red')))
-            fig.add_trace(go.Scatter(x=hist['tradedate'], y=[30]*60, name="Oversold", line=dict(dash='dash', color='green')))
-            fig.update_layout(title=f"{ticker} 60-Day Momentum (RSI)", height=300, template="plotly_dark")
-            st.plotly_chart(fig, use_container_width=True)
+                st.info(advice)
+                st.write(f"**Suggested Action:** {current.get('suggested_action', 'Hold')}")
+                st.write(f"**Current Signal:** {current.get('signal', 'N/A')}")
+                st.write(f"**Sector Context:** {current.get('sector', 'N/A')}")
 
+            with c2:
+                # Visual Trend (60 Days) using Plotly
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=hist['tradedate'], y=hist['rsi'], name="RSI (Momentum)", line=dict(color='#00d4ff', width=2)))
+                fig.add_trace(go.Scatter(x=hist['tradedate'], y=[70]*len(hist), name="Overbought (70)", line=dict(dash='dash', color='red')))
+                fig.add_trace(go.Scatter(x=hist['tradedate'], y=[30]*len(hist), name="Oversold (30)", line=dict(dash='dash', color='green')))
+                fig.update_layout(
+                    title=f"{ticker} 60-Day Momentum (RSI)", 
+                    height=300, 
+                    template="plotly_dark",
+                    margin=dict(l=20, r=20, t=40, b=20)
+                )
+                st.plotly_chart(fig, use_container_width=True)
 else:
-    st.warning("No data found in the `mpulse_execution_results` table.")
+    st.warning("No data found in the database, or connection failed.")
 
 st.markdown("---")
 st.caption("mPulse Intelligence Engine | Systems Nominal")
